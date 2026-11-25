@@ -2,12 +2,7 @@ name: Desktop app
 
 on:
   push:
-    paths:
-      - 'cpp/**'
-      - '.github/workflows/desktop.yml'
   pull_request:
-    paths:
-      - 'cpp/**'
   workflow_dispatch:
 
 jobs:
@@ -19,13 +14,13 @@ jobs:
         include:
           - os: windows-latest
             name: windows
-            exe: cpp/build/Release/HoldemLab.exe
+            exe: build/Release/HoldemLab.exe
           - os: macos-latest
             name: macos
-            exe: cpp/build/HoldemLab
+            exe: build/HoldemLab
           - os: ubuntu-latest
             name: linux
-            exe: cpp/build/HoldemLab
+            exe: build/HoldemLab
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -37,13 +32,13 @@ jobs:
           sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
 
       - name: Configure
-        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build cpp/build --config Release --parallel
+        run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir cpp/build -C Release --output-on-failure
+        run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Upload app
         uses: actions/upload-artifact@v4
