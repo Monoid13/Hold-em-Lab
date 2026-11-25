@@ -143,7 +143,7 @@ void ReviewScreen::draw(App& app, Rectangle area) {
   g.text("Step " + std::to_string(step_ + 1) + " / " + std::to_string(rec->steps.size()), bx + 96, dy + 8, 14, theme::text2);
   if (g.button({bx + 196, dy, 40, 32}, "\xE2\x96\xB6", Btn::Ghost, step_ + 1 < static_cast<int>(rec->steps.size()), 12)) step_++;
   if (g.button({bx + 240, dy, 40, 32}, "\xE2\x96\xB6|", Btn::Ghost, step_ + 1 < static_cast<int>(rec->steps.size()), 12)) step_ = static_cast<int>(rec->steps.size()) - 1;
-  g.text("Left/Right arrow keys", bx + 296, dy + 9, 12.5f, theme::muted);
+  if (!touchUI()) g.text("Left/Right arrow keys", bx + 296, dy + 9, 12.5f, theme::muted);
   dy += 44;
   // players table
   float cols[] = {0, 200, 260, 360, 450, 520};

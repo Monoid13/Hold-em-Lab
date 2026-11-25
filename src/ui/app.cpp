@@ -1,5 +1,7 @@
 #include "ui/app.hpp"
 
+#include "rlgl.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -19,7 +21,7 @@ void App::startNewGame() {
 }
 
 void App::drawTopBar(float h) {
-  int W = GetScreenWidth();
+  float W = screenW();
   DrawRectangle(0, 0, W, static_cast<int>(h), theme::surface);
   DrawLine(0, static_cast<int>(h), W, static_cast<int>(h), theme::border);
   g.text("\xE2\x99\xA0", 18, h / 2 - 13, 24, theme::accent, true);
@@ -49,7 +51,12 @@ void App::drawTopBar(float h) {
 
 void App::frame() {
   g.fourColor = settings.fourColor;
+  updateUiScale();
   g.beginFrame();
+  if (IsKeyPressed(KEY_BACK)) {  // Android back button closes overlays
+    if (showRankings) showRankings = false;
+    else if (tab != Tab::Play) tab = Tab::Play;
+  }
   ctrl.update(GetTime() * 1000.0);
 
   const bool welcome = !settings.seenWelcome;
@@ -59,8 +66,8 @@ void App::frame() {
   const bool overlay = welcome || showRankings;
   g.modalActive = overlay;
   if (overlay) {
-    float mw = std::min(760.f, GetScreenWidth() - 60.f), mh = std::min(welcome ? (welcomePage == 0 ? 330.f : 540.f) : 750.f, GetScreenHeight() - 60.f);
-    g.modal = {(GetScreenWidth() - mw) / 2, (GetScreenHeight() - mh) / 2, mw, mh};
+    float mw = std::min(760.f, screenW() - 60.f), mh = std::min(welcome ? (welcomePage == 0 ? 330.f : 540.f) : 750.f, screenH() - 60.f);
+    g.modal = {(screenW() - mw) / 2, (screenH() - mh) / 2, mw, mh};
   }
 
   // keyboard shortcuts per tab
@@ -72,8 +79,10 @@ void App::frame() {
 
   BeginDrawing();
   ClearBackground(theme::bg);
+  rlPushMatrix();
+  rlScalef(uiScale(), uiScale(), 1);  // everything below is drawn in logical units
   const float barH = 56;
-  Rectangle area{14, barH + 12, GetScreenWidth() - 28.f, GetScreenHeight() - barH - 24.f};
+  Rectangle area{14, barH + 12, screenW() - 28.f, screenH() - barH - 24.f};
   switch (tab) {
     case Tab::Play: play_.draw(*this, area); break;
     case Tab::Learn: learn_.draw(*this, area); break;
@@ -88,18 +97,19 @@ void App::frame() {
   else if (showRankings) drawRankingsOverlay();
   if (!toast.empty() && GetTime() < toastUntil) {
     Vector2 m = g.measure(toast, 15);
-    Rectangle r{(GetScreenWidth() - m.x) / 2 - 18, GetScreenHeight() - 64.f, m.x + 36, 38};
+    Rectangle r{(screenW() - m.x) / 2 - 18, screenH() - 64.f, m.x + 36, 38};
     DrawRectangleRounded(r, 1, 10, theme::surface3);
     DrawRectangleRoundedLinesEx(r, 1, 10, 1, theme::border);
     g.textCentered(toast, r, 15, theme::text);
   }
   g.endFrame();
+  rlPopMatrix();
   EndDrawing();
 }
 
 
 void App::drawRankingsOverlay() {
-  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Color{0, 0, 0, 160});
+  DrawRectangleRec({0, 0, screenW(), screenH()}, Color{0, 0, 0, 160});
   Rectangle m = g.modal;
   g.panel(m, "Hand rankings", "Best at the top. Press ? or Esc to close.");
   if (g.button({m.x + m.width - 44, m.y + 8, 32, 28}, "\xE2\x9C\x95", Btn::Ghost, true, 14)) showRankings = false;
@@ -111,7 +121,7 @@ void App::drawRankingsOverlay() {
 }
 
 void App::drawWelcome() {
-  DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Color{0, 0, 0, 170});
+  DrawRectangleRec({0, 0, screenW(), screenH()}, Color{0, 0, 0, 170});
   Rectangle m = g.modal;
   g.panel(m);
   float x = m.x + 32, y = m.y + 28, w = m.width - 64;
@@ -179,7 +189,7 @@ void App::drawWelcome() {
       g.text(r[0], x, y, 16, theme::accent, true);
       y += g.textWrapped(r[1], x + 130, y, w - 130, 15, theme::text2) + 14;
     }
-    para("Keyboard: F fold, C check/call, R bet/raise, H hint, Space next hand.", 13.5f, theme::muted);
+    if (!touchUI()) para("Keyboard: F fold, C check/call, R bet/raise, H hint, Space next hand.", 13.5f, theme::muted);
   } else {
     heading("Help is always on");
     para("\xE2\x80\xA2  The panel on the right says what you have, how strong it is, and suggests a move - the suggested button is marked with a gold star.");

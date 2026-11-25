@@ -146,13 +146,16 @@ void DrillsScreen::draw(App& app, Rectangle area) {
       y += 20;
       cards(q.board, x, y);
       y += ch + 14;
-      Rectangle box{x, y, 90, 40};
+      int cur = outsText_.empty() ? 0 : std::atoi(outsText_.c_str());
+      if (g.button({x, y, 44, 40}, "\xE2\x88\x92", Btn::Normal, !result_ && cur > 0, 18)) outsText_ = std::to_string(std::max(0, cur - 1));
+      Rectangle box{x + 50, y, 80, 40};
       DrawRectangleRounded(box, 0.3f, 6, theme::surface2);
       DrawRectangleRoundedLinesEx(box, 0.3f, 6, 1, result_ ? theme::border : theme::accent);
-      std::string shown = result_ ? std::to_string(answered_) : outsText_ + (static_cast<int>(GetTime() * 2) % 2 ? "|" : "");
+      std::string shown = result_ ? std::to_string(answered_) : outsText_.empty() ? std::string("?") : outsText_;
       g.textCentered(shown, box, 18, theme::text, true);
-      g.text("type a number", x + 100, y + 12, 13, theme::muted);
-      if (g.button({x + 220, y, 130, 40}, "Submit [Enter]", Btn::Primary, !result_ && !outsText_.empty(), 14)) answer(app, std::atoi(outsText_.c_str()));
+      if (g.button({x + 136, y, 44, 40}, "+", Btn::Normal, !result_ && cur < 25, 18)) outsText_ = std::to_string(std::min(25, outsText_.empty() ? 1 : cur + 1));
+      if (!touchUI()) g.text("or type a number", x + 192, y + 12, 13, theme::muted);
+      if (g.button({x + (touchUI() ? 196 : 330), y, 130, 40}, "Submit [Enter]", Btn::Primary, !result_ && !outsText_.empty(), 14)) answer(app, std::atoi(outsText_.c_str()));
       y += 54;
       if (result_) {
         g.text("Outs:", x, y, 13, theme::muted);

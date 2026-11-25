@@ -1,0 +1,72 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Single source of truth for the version: project(HoldemLab VERSION x.y.z) in CMakeLists.txt
+def cmakeText = file('../../CMakeLists.txt').text
+def appVersion = (cmakeText =~ /project\(HoldemLab VERSION ([0-9]+\.[0-9]+\.[0-9]+)/)[0][1]
+def parts = appVersion.tokenize('.').collect { it as int }
+def appVersionCode = parts[0] * 10000 + parts[1] * 100 + parts[2]
+
+// Optional release signing key (set these in CI from repository secrets). Without them the APK is
+// signed with the standard Android debug key, which is fine for sideloading.
+def keystorePath = System.getenv('HOLDEMLAB_KEYSTORE')
+def hasReleaseKey = keystorePath != null && !keystorePath.isEmpty() && file(keystorePath).exists()
+
+android {
+    namespace 'io.github.monoid13.holdemlab'
+    compileSdk 34
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'io.github.monoid13.holdemlab'
+        minSdk 24
+        targetSdk 34
+        versionCode appVersionCode
+        versionName appVersion
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+        externalNativeBuild {
+            cmake {
+                def args = ['-DHOLDEM_BUILD_TOOLS=OFF', '-DANDROID_STL=c++_static']
+                if (project.hasProperty('raylibSource')) {
+                    args << "-DFETCHCONTENT_SOURCE_DIR_RAYLIB=${project.property('raylibSource')}".toString()
+                }
+                arguments(*args)
+                targets 'main'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path '../../CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('HOLDEMLAB_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('HOLDEMLAB_KEY_ALIAS')
+                keyPassword System.getenv('HOLDEMLAB_KEY_PASSWORD')
+            }
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false  // lint is not needed to produce the APK
+        abortOnError false
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+}

@@ -53,6 +53,9 @@ struct Gui {
   int focusField = -1;  // active text field id
   bool modalActive = false;  // when set, only the modal rectangle receives the mouse
   Rectangle modal{};
+  // touch support: a press that moves more than a few pixels is a drag (scroll), not a tap
+  Vector2 pressPos{}, prevMouse{}, mouseDelta{};
+  bool dragging = false, dragClaimed = false;
 
   void load();
   void unload();
@@ -102,6 +105,14 @@ struct Scroll {
   void end(Gui& g, float contentHeight);
   void toTop() { offset = 0; }
 };
+
+// UI scaling: everything is laid out in logical units and scaled to the real screen.
+float uiScale();
+void updateUiScale();  // call once per frame before drawing
+float screenW();       // logical screen size
+float screenH();
+bool touchUI();        // phones/tablets: no keyboard hints, finger-sized interaction
+std::string stripKeyHint(const std::string& label);  // "Fold  [F]" -> "Fold" on touch devices
 
 Color withAlpha(Color c, float a);
 Color hexColor(unsigned rgb);

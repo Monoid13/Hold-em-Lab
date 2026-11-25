@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 
 extern "C" {
@@ -13,6 +14,49 @@ extern const unsigned int font_bold_size;
 }
 
 namespace hl::ui {
+
+static float g_scale = 1.f;
+
+float uiScale() { return g_scale; }
+
+bool touchUI() {
+#if defined(__ANDROID__) || defined(PLATFORM_ANDROID)
+  return true;
+#else
+  static const bool forced = [] {
+    const char* t = std::getenv("HOLDEMLAB_TOUCH");
+    return t && *t == '1';
+  }();
+  return forced;
+#endif
+}
+
+void updateUiScale() {
+  float s = 1.f;
+  if (const char* e = std::getenv("HOLDEMLAB_UI_SCALE")) s = static_cast<float>(std::atof(e));
+  else if (touchUI()) {
+    // Lay phones and tablets out as if the screen were at least ~720 logical pixels tall.
+    s = std::min(GetScreenHeight() / 720.f, GetScreenWidth() / 1100.f);
+  }
+  s = std::clamp(s, 0.5f, 4.f);
+  if (touchUI() || std::getenv("HOLDEMLAB_UI_SCALE")) s = std::max(s, 1.f);
+  if (s != g_scale || GetFrameTime() == 0) {
+    g_scale = s;
+    SetMouseScale(1.f / s, 1.f / s);
+  }
+}
+
+float screenW() { return GetScreenWidth() / g_scale; }
+float screenH() { return GetScreenHeight() / g_scale; }
+
+std::string stripKeyHint(const std::string& label) {
+  if (!touchUI()) return label;
+  auto open = label.rfind('[');
+  if (open == std::string::npos || label.back() != ']') return label;
+  std::string t = label.substr(0, open);
+  while (!t.empty() && t.back() == ' ') t.pop_back();
+  return t;
+}
 
 Color withAlpha(Color c, float a) { return Color{c.r, c.g, c.b, static_cast<unsigned char>(std::clamp(a, 0.f, 1.f) * 255)}; }
 Color hexColor(unsigned rgb) { return Color{static_cast<unsigned char>(rgb >> 16), static_cast<unsigned char>((rgb >> 8) & 255), static_cast<unsigned char>(rgb & 255), 255}; }
@@ -63,8 +107,19 @@ void Gui::unload() {
 void Gui::beginFrame() {
   mouse = GetMousePosition();
   pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-  released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+  bool rawReleased = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
   down = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+  mouseDelta = (down && !pressed) ? Vector2{mouse.x - prevMouse.x, mouse.y - prevMouse.y} : Vector2{0, 0};
+  prevMouse = mouse;
+  if (pressed) {
+    pressPos = mouse;
+    dragging = false;
+  }
+  float dx = mouse.x - pressPos.x, dy = mouse.y - pressPos.y;
+  if (down && !dragging && dx * dx + dy * dy > 14 * 14) dragging = true;
+  released = rawReleased && !dragging;  // a finger that moved was scrolling, not tapping
+  if (!down && !rawReleased) dragging = false;
+  dragClaimed = false;
   wheel = GetMouseWheelMove();
   wheelUsed = false;
   tooltip.clear();
@@ -76,8 +131,8 @@ void Gui::endFrame() {
   if (!tooltip.empty()) {
     float w = std::min(360.f, measure(tooltip, 13).x + 16);
     float h = wrappedHeight(tooltip, w - 16, 13) + 10;
-    float x = std::min(mouse.x + 14, GetScreenWidth() - w - 4);
-    float y = std::min(mouse.y + 18, GetScreenHeight() - h - 4);
+    float x = std::min(mouse.x + 14, screenW() - w - 4);
+    float y = std::min(mouse.y + 18, screenH() - h - 4);
     DrawRectangleRounded({x, y, w, h}, 0.2f, 6, theme::surface3);
     DrawRectangleRoundedLinesEx({x, y, w, h}, 0.2f, 6, 1, theme::border);
     textWrapped(tooltip, x + 8, y + 5, w - 16, 13, theme::text);
@@ -175,7 +230,8 @@ void Gui::pushClip(Rectangle r) {
     r = {x1, y1, std::max(0.f, x2 - x1), std::max(0.f, y2 - y1)};
   }
   clips.push_back(r);
-  BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width), static_cast<int>(r.height));
+  const float s = g_scale;  // scissor works in real screen pixels
+  BeginScissorMode(static_cast<int>(r.x * s), static_cast<int>(r.y * s), static_cast<int>(r.width * s + 0.5f), static_cast<int>(r.height * s + 0.5f));
 }
 
 void Gui::popClip() {
@@ -183,7 +239,8 @@ void Gui::popClip() {
   if (!clips.empty()) clips.pop_back();
   if (!clips.empty()) {
     Rectangle r = clips.back();
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width), static_cast<int>(r.height));
+    const float s = g_scale;
+    BeginScissorMode(static_cast<int>(r.x * s), static_cast<int>(r.y * s), static_cast<int>(r.width * s + 0.5f), static_cast<int>(r.height * s + 0.5f));
   }
 }
 
@@ -212,7 +269,7 @@ bool Gui::button(Rectangle r, const std::string& label, Btn style, bool enabled,
   if (h && down) r.y += 1;
   DrawRectangleRounded(r, round, 8, fill);
   DrawRectangleRoundedLinesEx(r, round, 8, 1, line);
-  textCentered(label, r, size, ink, true);
+  textCentered(stripKeyHint(label), r, size, ink, true);
   return h && released;
 }
 
@@ -418,6 +475,10 @@ float Scroll::begin(Gui& g, Rectangle r) {
 void Scroll::end(Gui& g, float contentHeight) {
   g.popClip();
   float maxOff = std::max(0.f, contentHeight - view.height);
+  if (g.dragging && g.down && !g.dragClaimed && maxOff > 0 && CheckCollisionPointRec(g.pressPos, view)) {
+    offset -= g.mouseDelta.y;  // finger / mouse drag scrolls the innermost scrollable region
+    g.dragClaimed = true;
+  }
   offset = std::clamp(offset, 0.f, maxOff);
   if (maxOff > 0) {
     float h = view.height * view.height / contentHeight;

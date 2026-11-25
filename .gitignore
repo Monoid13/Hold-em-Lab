@@ -3,3 +3,8 @@ holdem_test_data/
 .DS_Store
 *.log
 /*.png
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+android/build/
+android/local.properties

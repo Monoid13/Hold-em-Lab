@@ -26,17 +26,20 @@ jobs:
             name: macos
           - os: ubuntu-22.04 # older glibc, so the binary runs on more Linux distributions
             name: linux
+          - os: ubuntu-latest
+            name: android
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.name != 'android'
         run: |
           sudo apt-get update
           sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
 
       - name: Configure
+        if: matrix.name != 'android'
         shell: bash
         run: |
           EXTRA=()
@@ -46,9 +49,11 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "${EXTRA[@]}"
 
       - name: Build
+        if: matrix.name != 'android'
         run: cmake --build build --config Release --parallel
 
       - name: Test
+        if: matrix.name != 'android'
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Package (Windows)
@@ -66,12 +71,46 @@ jobs:
           ditto -c -k --keepParent build/HoldemLab.app HoldemLab-macos.zip
 
       - name: Package (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.name != 'android'
         run: |
           mkdir -p HoldemLab
           cp build/HoldemLab HoldemLab/HoldemLab
           chmod +x HoldemLab/HoldemLab
           tar czf HoldemLab-linux.tar.gz HoldemLab
+
+      - uses: actions/setup-java@v4
+        if: matrix.name == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: matrix.name == 'android'
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Set up Android signing key (optional)
+        if: matrix.name == 'android'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          # With these repository secrets set, every release is signed with the same key, so
+          # phones can install updates over older versions. Without them the debug key is used.
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "HOLDEMLAB_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package (Android)
+        if: matrix.name == 'android'
+        env:
+          HOLDEMLAB_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HOLDEMLAB_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          HOLDEMLAB_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle -p android --no-daemon assembleRelease
+          cp android/app/build/outputs/apk/release/app-release.apk HoldemLab-android.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -80,6 +119,7 @@ jobs:
             HoldemLab-windows.zip
             HoldemLab-macos.zip
             HoldemLab-linux.tar.gz
+            HoldemLab-android.apk
           if-no-files-found: ignore
 
   publish:
@@ -95,6 +135,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           name: Hold'em Lab ${{ github.event.inputs.tag || github.ref_name }}
           make_latest: true
           files: dist/*
@@ -106,11 +147,14 @@ jobs:
             | Windows 10 / 11 | `HoldemLab-windows.zip` |
             | Mac (Apple Silicon or Intel, macOS 11+) | `HoldemLab-macos.zip` |
             | Linux (x86-64) | `HoldemLab-linux.tar.gz` |
+            | Android phone or tablet (Android 7+) | `HoldemLab-android.apk` |
 
             **Windows:** unzip and double-click `HoldemLab.exe`. If Windows SmartScreen says it "protected your PC", click **More info**, then **Run anyway** (the app isn't code-signed).
 
             **Mac:** unzip and move `HoldemLab` to Applications. The first time, right-click it and choose **Open**. On recent macOS versions you may instead need **System Settings > Privacy & Security > Open Anyway** (the app isn't notarised by Apple).
 
             **Linux:** extract, then run `./HoldemLab/HoldemLab`.
+
+            **Android:** open this page on your phone and tap `HoldemLab-android.apk`. When the download finishes, open it; Android will ask you to allow installing apps from your browser (**Settings > Install unknown apps**). If Play Protect warns about an unknown app, choose **Install anyway**. The game plays in landscape.
 
             New to poker? Choose **I'm new to poker** when the app starts: it turns on beginner help and shows you around.

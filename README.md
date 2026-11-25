@@ -1,6 +1,6 @@
 # Hold'em Lab
 
-A desktop no-limit Texas Hold'em trainer for Windows, macOS and Linux. You play against bots that
+A no-limit Texas Hold'em trainer for Windows, macOS, Linux and Android. You play against bots that
 think, bluff, tilt and adapt to how you play, and a built-in coach grades every decision you make.
 
 It is written in C++17 with [raylib](https://www.raylib.com) for graphics. The result is a single
@@ -41,6 +41,7 @@ Get the latest version from the **[Releases page](https://github.com/Monoid13/Ho
 | Windows 10 / 11 | `HoldemLab-windows.zip` |
 | Mac (Apple Silicon or Intel, macOS 11+) | `HoldemLab-macos.zip` |
 | Linux (x86-64) | `HoldemLab-linux.tar.gz` |
+| Android phone or tablet (Android 7+) | `HoldemLab-android.apk` |
 
 - **Windows:** unzip and double-click `HoldemLab.exe`. If SmartScreen says it "protected your
   PC", click **More info**, then **Run anyway**. The app isn't code-signed, which is why Windows
@@ -49,6 +50,10 @@ Get the latest version from the **[Releases page](https://github.com/Monoid13/Ho
   **Open**. On recent macOS versions you may instead need **System Settings > Privacy & Security >
   Open Anyway**, because the app isn't notarised by Apple.
 - **Linux:** extract it, then run `./HoldemLab/HoldemLab`.
+- **Android:** open the Releases page on your phone and tap `HoldemLab-android.apk`, then open
+  the downloaded file. Android asks you to allow installing apps from your browser (**Settings >
+  Install unknown apps**). If Play Protect warns about an unknown app, choose **Install anyway**.
+  The game plays in landscape; tap to press buttons and drag to scroll.
 
 **New to poker?** Choose **I'm new to poker** when the app first starts. It turns on beginner
 help and gives you a short tour. The **Learn** tab explains the rules, hand rankings and poker
@@ -98,6 +103,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
 ```bash
 ./build/HoldemLab
 ```
+
+**Android** (needs JDK 17+, Gradle 8, and the Android SDK with NDK 27 — Android Studio installs
+these). Point `ANDROID_HOME` at the SDK, then:
+
+```bash
+gradle -p android assembleRelease
+```
+
+The APK is `android/app/build/outputs/apk/release/app-release.apk`.
 
 If raylib 5 is already installed system-wide, CMake uses it instead of downloading it. Pass
 `-DHOLDEM_BUILD_GUI=OFF` to build only the engine, tests and simulator (no graphics libraries
@@ -160,8 +174,24 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-The **Release** workflow builds Windows, macOS (universal) and Linux packages, runs the tests and
-publishes them on the Releases page.
+The **Release** workflow builds Windows, macOS (universal), Linux and Android packages, runs the
+tests and publishes them on the Releases page. You can also start it from the **Actions** tab
+(**Release > Run workflow**) and type the version.
+
+### Android signing key (optional, recommended)
+
+Without a key, the APK is signed with a throwaway debug key that changes each release, so a phone
+has to uninstall the old version before installing a new one. To let updates install over older
+versions, create a key once:
+
+```bash
+keytool -genkeypair -v -keystore holdemlab.jks -alias holdemlab -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then add four repository secrets (**Settings > Secrets and variables > Actions**):
+`ANDROID_KEYSTORE_BASE64` (the output of `base64 -w0 holdemlab.jks`), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` (`holdemlab`) and `ANDROID_KEY_PASSWORD`. Keep `holdemlab.jks` somewhere safe
+and never commit it.
 
 ## Code layout
 
@@ -171,7 +201,8 @@ src/bots/    HUD stats, Bayesian range model, strategy (preflop + EV postflop), 
 src/coach/   spot analysis and decision grading
 src/train/   drill generators and graders
 src/app/     game controller, JSON persistence, settings, progress, hand history
-src/ui/      raylib GUI: widgets, screens, welcome tour and Learn tab
+src/ui/      raylib GUI: widgets, screens, welcome tour and Learn tab (scales for phones and tablets)
+android/     Gradle project that packages the same code as an Android app (NativeActivity)
 tests/       dependency-free test runner
 tools/       headless bot simulator
 assets/      DejaVu fonts and the app icon (embedded at build time; see assets/fonts/LICENSE)

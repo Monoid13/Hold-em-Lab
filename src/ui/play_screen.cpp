@@ -31,7 +31,7 @@ bool actionButton(Gui& g, Rectangle r, const std::string& label, const std::stri
   if (!caption.empty()) {
     Color ink = style == Btn::Raise ? Color{255, 226, 163, 255} : theme::text;
     if (!enabled) ink = withAlpha(ink, 0.45f);
-    g.textCentered(label, {r.x, r.y + 4, r.width, r.height * 0.55f}, 16, ink, true);
+    g.textCentered(stripKeyHint(label), {r.x, r.y + 4, r.width, r.height * 0.55f}, 16, ink, true);
     g.textCentered(caption, {r.x, r.y + r.height * 0.52f, r.width, r.height * 0.4f}, 12, withAlpha(ink, enabled ? 0.75f : 0.4f));
   }
   if (suggested && enabled) {

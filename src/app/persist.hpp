@@ -14,6 +14,7 @@
 namespace hl {
 
 std::string dataDir();
+void setDataDir(const std::string& path);  // e.g. Android's private app folder
 Json loadJson(const std::string& name);
 bool saveJson(const std::string& name, const Json& j);
 void clearAllData();

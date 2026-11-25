@@ -13,8 +13,13 @@ namespace hl {
 static const char* GRADE_KEYS[5] = {"best", "good", "inaccuracy", "mistake", "blunder"};
 static const char* STREET_KEYS[4] = {"preflop", "flop", "turn", "river"};
 
+static std::string g_dataDirOverride;
+
+void setDataDir(const std::string& path) { g_dataDirOverride = path; }
+
 std::string dataDir() {
   if (const char* o = std::getenv("HOLDEMLAB_DATA_DIR")) return o;
+  if (!g_dataDirOverride.empty()) return g_dataDirOverride;
   fs::path p;
 #if defined(_WIN32)
   if (const char* a = std::getenv("APPDATA")) p = fs::path(a) / "HoldemLab";
