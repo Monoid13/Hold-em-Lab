@@ -132,6 +132,16 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Remove drafts left by an earlier failed attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id"); do
+            echo "Deleting draft release $id"
+            gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+          done
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
