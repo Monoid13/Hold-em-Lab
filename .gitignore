@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.log
+cpp/build*/
+holdem_test_data/
+*.png

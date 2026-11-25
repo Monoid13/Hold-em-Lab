@@ -1,0 +1,52 @@
+name: Desktop app
+
+on:
+  push:
+    paths:
+      - 'cpp/**'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'cpp/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            exe: cpp/build/Release/HoldemLab.exe
+          - os: macos-latest
+            name: macos
+            exe: cpp/build/HoldemLab
+          - os: ubuntu-latest
+            name: linux
+            exe: cpp/build/HoldemLab
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build cpp/build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir cpp/build -C Release --output-on-failure
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: HoldemLab-${{ matrix.name }}
+          path: ${{ matrix.exe }}

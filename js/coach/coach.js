@@ -174,8 +174,8 @@ export function gradeDecision(spot, action) {
     const sameSize = !sameType || heroType !== 'raise' || Math.abs(best.amount - heroAmount) <= Math.max(bb, best.amount * 0.15);
     if (sameType && sameSize) grade = 'best';
     else if (rel < 0.04 || lossBB < 0.35) grade = 'good';
-    else if (rel < 0.12) grade = 'inaccuracy';
-    else if (rel < 0.3) grade = 'mistake';
+    else if (rel < 0.14) grade = 'inaccuracy';
+    else if (rel < 0.35) grade = 'mistake';
     else grade = 'blunder';
 
     const rangeTxt = spot.oppRanges.length > 1 ? 'their estimated ranges' : 'the estimated range';

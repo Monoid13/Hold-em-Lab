@@ -5,7 +5,13 @@ bluff, tilt and adapt the way people do, and a built-in coach grades every decis
 
 No dependencies, no build step, no account. Everything is stored locally in your browser.
 
-## Quick start
+## Two versions
+
+- **Desktop app (C++):** a native application for Windows, macOS and Linux, built with raylib.
+  Ready-built downloads and build steps are in [cpp/README.md](cpp/README.md).
+- **Browser version (JavaScript):** described in the rest of this file.
+
+## Quick start (browser version)
 
 ```bash
 npm start

@@ -113,7 +113,10 @@ export function boardTexture(board) {
   if (paired) wet -= 0.1;
   const high = ranks[0];
   const labels = [];
-  labels.push(monotone ? (maxSuit >= 4 ? 'four-flush' : 'monotone') : twoTone ? 'two-tone' : 'rainbow');
+  if (maxSuit === board.length) labels.push('monotone');
+  else if (maxSuit >= 4) labels.push('four-flush');
+  else if (maxSuit === 3) labels.push('flush possible');
+  else labels.push(twoTone ? 'two-tone' : 'rainbow');
   if (paired) labels.push('paired');
   if (windows >= 2) labels.push('connected');
   if (high >= 10) labels.push(`${RANK_NAME[high]}-high`);
