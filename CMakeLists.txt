@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
-project(HoldemLab VERSION 1.0 LANGUAGES C CXX)
+project(HoldemLab VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
+
+# Link the C/C++ runtime statically on Windows so the .exe runs without the VC++ redistributable.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+add_compile_definitions(HOLDEMLAB_VERSION="${PROJECT_VERSION}")
 
 if(MSVC)
   add_compile_options(/utf-8)
@@ -63,14 +67,24 @@ if(HOLDEM_BUILD_GUI)
       -DOUT=${EMBED_OUT}
       -DREGULAR=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/DejaVuSans.ttf
       -DBOLD=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/DejaVuSans-Bold.ttf
+      -DICON=${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon.png
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_fonts.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/DejaVuSans.ttf
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/DejaVuSans-Bold.ttf
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon.png
             ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_fonts.cmake
-    COMMENT "Embedding fonts")
+    COMMENT "Embedding fonts and icon")
 
   file(GLOB HOLDEM_UI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/*.cpp)
-  add_executable(HoldemLab src/main.cpp ${HOLDEM_UI_SOURCES} ${EMBED_OUT})
+  set(HOLDEM_PLATFORM_SOURCES)
+  if(WIN32)
+    list(APPEND HOLDEM_PLATFORM_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/app.rc)
+  elseif(APPLE)
+    set(HOLDEM_ICNS ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/HoldemLab.icns)
+    set_source_files_properties(${HOLDEM_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND HOLDEM_PLATFORM_SOURCES ${HOLDEM_ICNS})
+  endif()
+  add_executable(HoldemLab src/main.cpp ${HOLDEM_UI_SOURCES} ${EMBED_OUT} ${HOLDEM_PLATFORM_SOURCES})
   target_link_libraries(HoldemLab PRIVATE holdem_core raylib)
   if(MSVC)
     set_target_properties(HoldemLab PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
@@ -79,5 +93,12 @@ if(HOLDEM_BUILD_GUI)
   endif()
   if(APPLE)
     target_link_libraries(HoldemLab PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
+    set_target_properties(HoldemLab PROPERTIES
+      MACOSX_BUNDLE TRUE
+      MACOSX_BUNDLE_BUNDLE_NAME "Hold'em Lab"
+      MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.monoid13.holdemlab"
+      MACOSX_BUNDLE_ICON_FILE HoldemLab.icns
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+      MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})
   endif()
 endif()

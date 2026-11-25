@@ -2,6 +2,7 @@
 // Game loop: deals hands, asks bots for decisions on human-like timers, waits for the hero,
 // runs the coach, records history/stats and handles cash rebuys or tournament blinds.
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
@@ -61,6 +62,7 @@ class GameController {
   bool heroAct(Action a);
   void rebuyHero();
   void togglePause() { paused_ = !paused_; }
+  void setPaused(bool p) { paused_ = p; }
   bool paused() const { return paused_; }
   void saveStats() const;
 
@@ -94,6 +96,7 @@ class GameController {
 
   void schedule(double delayMs, std::function<void()> fn);
   double speed(double ms) const { return ms * settings.speedFactor(); }
+  double gap(double ms) const { return std::max(speed(ms), settings.minBotGapMs()); }  // never faster than the minimum pause
   void applyLevel(int level);
   void next();
   void applyBot(int handId, int seat, const Decision& d);

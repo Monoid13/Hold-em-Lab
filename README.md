@@ -32,18 +32,27 @@ players make the mistakes real people make rather than random ones.
   occasional "Hollywood" tanks with a monster), human bet sizes, tilt after bad beats, bet-size
   tells from weak players, and table chat.
 
-## Download a ready-built app
+## Download
 
-Every push to GitHub builds the app for Windows, macOS and Linux:
+Get the latest version from the **[Releases page](https://github.com/Monoid13/Hold-em-Lab/releases/latest)**:
 
-1. Open the repository's **Actions** tab and choose the **Desktop app** workflow.
-2. Open the latest successful run.
-3. Under **Artifacts**, download `HoldemLab-windows`, `HoldemLab-macos` or `HoldemLab-linux`.
-4. Unzip it and run `HoldemLab`.
+| Your computer | File |
+| --- | --- |
+| Windows 10 / 11 | `HoldemLab-windows.zip` |
+| Mac (Apple Silicon or Intel, macOS 11+) | `HoldemLab-macos.zip` |
+| Linux (x86-64) | `HoldemLab-linux.tar.gz` |
 
-- **macOS:** the app isn't signed, so the first time you open it, right-click it and choose
-  **Open**, or run `xattr -d com.apple.quarantine HoldemLab` in Terminal.
-- **Linux:** run `chmod +x HoldemLab` first.
+- **Windows:** unzip and double-click `HoldemLab.exe`. If SmartScreen says it "protected your
+  PC", click **More info**, then **Run anyway**. The app isn't code-signed, which is why Windows
+  asks.
+- **Mac:** unzip and move `HoldemLab` to Applications. The first time, right-click it and choose
+  **Open**. On recent macOS versions you may instead need **System Settings > Privacy & Security >
+  Open Anyway**, because the app isn't notarised by Apple.
+- **Linux:** extract it, then run `./HoldemLab/HoldemLab`.
+
+**New to poker?** Choose **I'm new to poker** when the app first starts. It turns on beginner
+help and gives you a short tour. The **Learn** tab explains the rules, hand rankings and poker
+terms, and you can press `?` at the table to see which hand beats which.
 
 ## Build it yourself
 
@@ -98,12 +107,13 @@ needed).
 
 | Screen | What it does |
 | --- | --- |
-| **Play** | The table. Shortcuts: `F` fold, `C` check/call, `R` bet/raise, `Up`/`Down` change the size, `H` hint, `Space` next hand, `P` pause. The right-hand panel shows your hand, draws, outs, equity against estimated ranges, pot odds and the coach's grade for each decision. |
+| **Play** | The table. In beginner mode it explains each stage, shows your hand and its strength in plain words, and marks the coach's suggested move. Shortcuts: `F` fold, `C` check/call, `R` bet/raise, `Up`/`Down` change the size, `H` hint, `?` hand rankings, `Space` next hand, `P` pause. The right-hand panel shows your hand, draws, outs, equity against estimated ranges, pot odds and the coach's grade for each decision. |
+| **Learn** | How to play, hand rankings with examples, a glossary of poker words and beginner tips. |
 | **Review** | Replays recent hands step by step (`Left`/`Right` keys) with every hole card shown and the coach's notes on each of your decisions. |
 | **Stats** | Profit graph, decision score by street, a leak finder, your HUD stats against typical winning ranges, results by position, drill scores, and reads on each opponent. |
 | **Drills** | Preflop decisions, equity estimation, pot odds and bet math, counting outs, and reading showdowns. |
 | **Ranges** | Opening charts for every position, plus a ranking of all 169 starting hands. |
-| **Settings** | Number of opponents (1-8), table lineup or per-seat bot styles, cash game or tournament, stakes, bot speed, coach mode and training aids. |
+| **Settings** | Beginner mode, number of opponents (1-8), table lineup or per-seat bot styles, cash game or tournament, stakes, bot speed (Relaxed / Normal / Fast), coach mode and training aids. |
 
 Your settings, stats, hand histories and drill scores are saved automatically:
 
@@ -138,6 +148,21 @@ The table below is from 18,000 hands over six seeded runs in the 6-max mixed lin
 Heads-up over 80,000 hands, the Shark beats the TAG by +14 bb/100 and the Calling Station by
 +170 bb/100.
 
+## Publishing a new version
+
+Bump the version in `CMakeLists.txt`, then push a tag such as `v1.2.0`:
+
+```bash
+git tag v1.2.0
+```
+
+```bash
+git push origin v1.2.0
+```
+
+The **Release** workflow builds Windows, macOS (universal) and Linux packages, runs the tests and
+publishes them on the Releases page.
+
 ## Code layout
 
 ```
@@ -146,8 +171,8 @@ src/bots/    HUD stats, Bayesian range model, strategy (preflop + EV postflop), 
 src/coach/   spot analysis and decision grading
 src/train/   drill generators and graders
 src/app/     game controller, JSON persistence, settings, progress, hand history
-src/ui/      raylib GUI: widgets and the six screens
+src/ui/      raylib GUI: widgets, screens, welcome tour and Learn tab
 tests/       dependency-free test runner
 tools/       headless bot simulator
-assets/      DejaVu fonts (embedded at build time; see assets/fonts/LICENSE)
+assets/      DejaVu fonts and the app icon (embedded at build time; see assets/fonts/LICENSE)
 ```

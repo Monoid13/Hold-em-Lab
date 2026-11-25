@@ -90,6 +90,9 @@ void SettingsScreen::draw(App& app, Rectangle area) {
     s.autoDeal = app.settings.autoDeal;
     s.allInEquity = app.settings.allInEquity;
     s.revealInReview = app.settings.revealInReview;
+    s.beginnerMode = app.settings.beginnerMode;
+    s.showSuggestion = app.settings.showSuggestion;
+    s.seenWelcome = app.settings.seenWelcome;
     app.settings = s;
     app.settings.save();
     app.startNewGame();
@@ -102,7 +105,7 @@ void SettingsScreen::draw(App& app, Rectangle area) {
   Settings& s = app.settings;
   bool changed = false;
   float ty = y0;
-  float th = 44 + 62 + 5 * 52 + 10;
+  float th = 44 + 62 + 7 * 52 + 10;
   g.panel({x2, ty, colW, th}, "Training aids", "Applied immediately");
   float yy = ty + 44;
   float xx = x2 + pad;
@@ -113,7 +116,11 @@ void SettingsScreen::draw(App& app, Rectangle area) {
     changed = true;
   }
   yy += 62;
-  changed |= g.toggle({xx, yy, fw, 46}, "Show training panel", s.showHud, "Hand strength, equity vs estimated ranges, pot odds, outs");
+  changed |= g.toggle({xx, yy, fw, 46}, "Beginner mode", s.beginnerMode, "Plain-language help, button explanations and simple coach feedback");
+  yy += 52;
+  changed |= g.toggle({xx, yy, fw, 46}, "Highlight the suggested move", s.showSuggestion, "Beginner mode: show the coach's suggestion before you act");
+  yy += 52;
+  changed |= g.toggle({xx, yy, fw, 46}, "Show training panel (advanced)", s.showHud, "Hand strength, equity vs estimated ranges, pot odds, outs");
   yy += 52;
   changed |= g.toggle({xx, yy, fw, 46}, "Show opponent HUD stats", s.showOppStats, "VPIP / PFR / AF under each seat");
   yy += 52;
@@ -128,7 +135,7 @@ void SettingsScreen::draw(App& app, Rectangle area) {
   g.panel({x3, ty, colW, dh}, "Display & pace");
   yy = ty + 44;
   xx = x3 + pad;
-  std::vector<std::string> speeds = {"instant", "fast", "normal", "realistic"}, speedLabels = {"Instant", "Fast", "Normal", "Realistic (human think times)"};
+  std::vector<std::string> speeds = {"relaxed", "normal", "fast"}, speedLabels = {"Relaxed (plenty of time to watch)", "Normal", "Fast"};
   int si = indexOf(speeds, s.speed);
   if (g.chooser({xx, yy, fw, 54}, "Bot speed", speedLabels, si)) {
     s.speed = speeds[si];
@@ -149,7 +156,7 @@ void SettingsScreen::draw(App& app, Rectangle area) {
   float dataH = 44 + 60 + 50;
   g.panel({x3, dy, colW, dataH}, "Data");
   float ry = dy + 44;
-  ry += g.textWrapped("Saved in " + dataDir() + ". Bots remember your tendencies between sessions.", x3 + pad, ry, fw, 12.5f, theme::muted) + 10;
+  ry += g.textWrapped(std::string("Hold'em Lab version ") + HOLDEMLAB_VERSION + ". Saved in " + dataDir() + ". Bots remember your tendencies between sessions.", x3 + pad, ry, fw, 12.5f, theme::muted) + 10;
   if (!confirmWipe_) {
     if (g.button({x3 + pad, ry, 200, 36}, "Delete all saved data", Btn::Danger, true, 13.5f)) confirmWipe_ = true;
   } else {

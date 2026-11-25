@@ -22,19 +22,23 @@ void clearAllData();
 struct Settings {
   std::string heroName = "You";
   int numOpponents = 5;
-  std::string lineup = "mixed";
+  std::string lineup = "beginner";
   std::vector<std::string> customSeats = {"shark", "station", "tag", "lag", "nit", "maniac", "scared", "tag"};
   int startingStackBB = 100;
   int bigBlind = 2;
   std::string mode = "cash";  // cash | tournament
   bool autoRebuy = true;
   int levelHands = 10;
-  std::string speed = "normal";   // instant | fast | normal | realistic
+  std::string speed = "normal";   // relaxed | normal | fast  (instant: tests only)
   std::string coachMode = "all";  // all | mistakes | off
-  bool showHud = true, showOppStats = true, revealProfiles = false, showAllCards = false, fourColor = false, autoDeal = true, allInEquity = true;
+  bool showHud = true, showOppStats = false, revealProfiles = false, showAllCards = false, fourColor = false, autoDeal = true, allInEquity = true;
   bool revealInReview = true;
+  bool beginnerMode = true;    // plain-language help, suggested moves, button captions
+  bool showSuggestion = true;  // highlight the coach's suggested move (beginner mode)
+  bool seenWelcome = false;
 
   double speedFactor() const;
+  double minBotGapMs() const;  // minimum pause before each bot action
   Json toJson() const;
   static Settings fromJson(const Json& j);
   static Settings load();

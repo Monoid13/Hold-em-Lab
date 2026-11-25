@@ -161,6 +161,7 @@ std::string Gui::ellipsize(const std::string& s, float maxW, float size, bool b)
 
 bool Gui::hover(Rectangle r) const {
   if (!CheckCollisionPointRec(mouse, r)) return false;
+  if (modalActive && !CheckCollisionPointRec(mouse, modal)) return false;
   for (auto& c : clips)
     if (!CheckCollisionPointRec(mouse, c)) return false;
   return true;

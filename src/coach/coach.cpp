@@ -1,6 +1,7 @@
 #include "coach/coach.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <sstream>
@@ -289,6 +290,107 @@ Grade gradeDecision(const Spot& spot, Action action) {
   }
   g.evLossBB = g.evLoss / bb;
   return g;
+}
+
+
+// ---------- beginner helpers ----------
+
+std::string plainAction(Act t) {
+  switch (t) {
+    case Act::Fold: return "give up this hand";
+    case Act::Check: return "pass for free";
+    case Act::Call: return "match the bet";
+    case Act::Bet: return "put chips in first";
+    case Act::Raise: return "bet more than them";
+    case Act::AllIn: return "bet all your chips";
+    default: return "";
+  }
+}
+
+static std::string lower(std::string s) {
+  if (!s.empty()) s[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
+  return s;
+}
+
+PlainAdvice beginnerAdvice(const Spot& spot) {
+  PlainAdvice a;
+  const View& v = spot.view;
+  static const char* words[] = {"Weak", "So-so", "Decent", "Strong", "Very strong"};
+  if (spot.isPreflop) {
+    double p = spot.preflop.meta.pct;
+    a.level = p <= 0.05 ? 4 : p <= 0.15 ? 3 : p <= 0.35 ? 2 : p <= 0.6 ? 1 : 0;
+  } else {
+    double e = spot.equity;
+    a.level = e >= 0.85 ? 4 : e >= 0.65 ? 3 : e >= 0.45 ? 2 : e >= 0.25 ? 1 : 0;
+  }
+  a.strengthWord = words[a.level];
+  const HandAnalysis& info = spot.info;
+  a.handLine = "You have " + (spot.isPreflop ? info.name : lower(info.name)) + (info.detail.empty() || spot.isPreflop ? "" : " (" + info.detail + ")") + ".";
+  if (info.detail == "pair on board" || info.detail == "playing the board")
+    a.handLine += " Careful: that comes from the shared cards, so every player has it too - your own cards add little.";
+
+  Act t = spot.recommended.type;
+  bool allIn = (t == Act::Bet || t == Act::Raise) && spot.recommended.amount >= v.legal.maxTo;
+  std::string label = actionLabel(t, spot.recommended.amount, v);
+  auto paren = label.find(" (");
+  if (paren != std::string::npos) label = label.substr(0, paren);
+  a.suggestion = label + " - " + plainAction(allIn ? Act::AllIn : t);
+
+  if (spot.isPreflop) {
+    a.reasons.push_back(info.name + " is in the top " + fmtPct(spot.preflop.meta.pct) + " of starting hands.");
+    int raises = spot.preflop.meta.ctx.raises;
+    if (t == Act::Fold) a.reasons.push_back(raises ? "Someone has already raised, so you need a better hand to play." : "Starting with weak cards loses chips over time - waiting for a better hand is fine.");
+    else if (t == Act::Raise) a.reasons.push_back(raises ? "Your hand is strong enough to raise again." : "Good hands play best with a raise: it builds the pot and can win it straight away.");
+    else if (t == Act::Call) a.reasons.push_back("Your hand is worth seeing the flop for this price.");
+    else if (t == Act::Check) a.reasons.push_back("You are in the big blind and nobody raised, so you see the flop for free.");
+    if (v.me.position == "BTN" || v.me.position == "CO") a.reasons.push_back("You act late in this hand (good position), so you can play a few more hands.");
+    else if (v.me.position == "UTG" || v.me.position == "UTG+1" || v.me.position == "LJ") a.reasons.push_back("You act early, so many players still act after you - play only good hands.");
+  } else {
+    a.reasons.push_back("You win about " + fmtPct(spot.equity) + " of the time against the hands your opponents are likely to have.");
+    if (v.legal.toCall > 0)
+      a.reasons.push_back("It costs " + std::to_string(v.legal.toCall) + " to stay in. That is worth it if you win at least " + fmtPct(spot.needed) + " of the time.");
+    if (spot.cardsToCome && info.outs.drawOuts > 0)
+      a.reasons.push_back(std::to_string(info.outs.drawOuts) + " cards can complete your " + (info.draws.description.empty() ? std::string("draw") : info.draws.description.front()) + " (about " +
+                          fmtPct(outsToEquity(info.outs.drawOuts, spot.cardsToCome)) + (spot.cardsToCome == 2 ? " by the river)." : " on the river)."));
+    if (t == Act::Fold) a.reasons.push_back("You are probably behind and the price is too high: folding saves chips.");
+    else if (t == Act::Call) a.reasons.push_back("Your chance of winning is good enough for the price.");
+    else if (t == Act::Check) a.reasons.push_back(a.level >= 3 ? "Checking can trap opponents into betting." : "Your hand is not strong enough to bet, and checking is free.");
+    else {
+      for (auto& o : spot.postflop.options)
+        if (o.type == t && o.amount == spot.recommended.amount) {
+          if (o.eqCalled >= 0.5) a.reasons.push_back("Worse hands will pay you off: bet to win more.");
+          else a.reasons.push_back("This is a bluff: opponents fold often enough (about " + fmtPct(o.foldAll) + ") to make it profitable.");
+        }
+    }
+  }
+  return a;
+}
+
+std::string plainSummary(const Grade& g) {
+  std::string better = lower(g.bestLabel);
+  auto paren = better.find(" (");
+  if (paren != std::string::npos) better = better.substr(0, paren);
+  std::string why;
+  for (auto& t : g.tags) {
+    if (t == "overfold") why = " You had a good enough chance to win for the price.";
+    else if (t == "loose-call") why = " The price was too high for your chance of winning.";
+    else if (t == "missed-value") why = " Your hand was strong - betting makes worse hands pay you.";
+    else if (t == "missed-bluff") why = " A bet would have made better hands fold often enough.";
+    else if (t == "bad-bluff") why = " Your opponents were unlikely to fold here.";
+    else if (t == "preflop-too-loose") why = " This starting hand is too weak to play from here.";
+    else if (t == "preflop-too-tight") why = " This starting hand is good enough to play from here.";
+    else if (t == "open-limp") why = " When nobody has bet yet, raise or fold instead of just calling.";
+    else if (t == "passive-preflop" || t == "passive") why = " A strong hand makes more money by raising.";
+    else if (t == "sizing") why = " The bet size made a difference.";
+    else if (t == "bad-allin") why = " Your chance of winning did not justify the all-in price.";
+  }
+  switch (g.grade) {
+    case GradeLevel::Best: return "Great move!";
+    case GradeLevel::Good: return "Good move.";
+    case GradeLevel::Inaccuracy: return "Okay, but " + better + " was slightly better." + why;
+    case GradeLevel::Mistake: return "Mistake: " + better + " was better." + why;
+    default: return "Big mistake: " + better + " was much better." + why;
+  }
 }
 
 }  // namespace hl

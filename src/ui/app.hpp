@@ -27,6 +27,8 @@ class PlayScreen {
   Scroll logScroll_;
   size_t lastLogSize_ = 0;
   void drawTable(App& app, Rectangle r);
+  void drawStatus(App& app, Rectangle r);
+  float drawBeginnerPanel(App& app, Rectangle r);
   void drawActionBar(App& app, Rectangle r);
   void drawSidebar(App& app, Rectangle r);
   void perform(App& app, const std::string& act);
@@ -76,6 +78,17 @@ class DrillsScreen {
   void answer(App& app, int v);
 };
 
+float drawRankingsList(Gui& g, float x, float y, float width, float cardW);
+
+class LearnScreen {
+ public:
+  void draw(App& app, Rectangle area);
+
+ private:
+  int section_ = 0;
+  Scroll scroll_;
+};
+
 class RangesScreen {
  public:
   void draw(App& app, Rectangle area);
@@ -98,7 +111,8 @@ class SettingsScreen {
   bool confirmWipe_ = false;
 };
 
-enum class Tab { Play = 0, Review, Stats, Drills, Ranges, Settings };
+enum class Tab { Play = 0, Learn, Review, Stats, Drills, Ranges, Settings };
+constexpr int TAB_COUNT = 7;
 
 class App {
  public:
@@ -114,6 +128,8 @@ class App {
   GameController ctrl;
   Tab tab = Tab::Play;
   std::string toast;
+  bool showRankings = false;
+  int welcomePage = 0;
   double toastUntil = 0;
   DrillsScreen& drills() { return drills_; }
   void showToast(const std::string& t) {
@@ -123,6 +139,10 @@ class App {
 
  private:
   PlayScreen play_;
+  LearnScreen learn_;
+  Scroll rankScroll_;
+  void drawWelcome();
+  void drawRankingsOverlay();
   ReviewScreen review_;
   StatsScreen statsScreen_;
   DrillsScreen drills_;

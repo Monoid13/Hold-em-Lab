@@ -270,6 +270,14 @@ TEST(coach_grades_folding_the_nuts_badly) {
   CHECK(fold.grade == GradeLevel::Mistake || fold.grade == GradeLevel::Blunder);
   Grade raise = gradeDecision(spot, {Act::Raise, 16});
   CHECK(raise.grade == GradeLevel::Best || raise.grade == GradeLevel::Good);
+  // beginner helpers speak plainly
+  PlainAdvice adv = beginnerAdvice(spot);
+  CHECK(adv.level == 4);
+  CHECK(adv.strengthWord == "Very strong");
+  CHECK(adv.suggestion.find("Fold") == std::string::npos);
+  CHECK(!adv.reasons.empty());
+  CHECK(plainSummary(fold).find("istake") != std::string::npos);
+  CHECK(plainSummary(raise).find("move") != std::string::npos);
 }
 
 TEST(coach_folds_72o_utg) {
@@ -284,6 +292,9 @@ TEST(coach_folds_72o_utg) {
   Spot spot = analyzeSpot(t, 0, tr, rng);
   CHECK(spot.recommended.type == Act::Fold);
   CHECK(gradeDecision(spot, {Act::Fold}).grade == GradeLevel::Best);
+  PlainAdvice adv = beginnerAdvice(spot);
+  CHECK(adv.level == 0);
+  CHECK(adv.suggestion.rfind("Fold", 0) == 0);
   GradeLevel g = gradeDecision(spot, {Act::Raise, 5}).grade;
   CHECK(g == GradeLevel::Mistake || g == GradeLevel::Blunder || g == GradeLevel::Inaccuracy);
 }

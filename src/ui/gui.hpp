@@ -51,6 +51,8 @@ struct Gui {
   std::string tooltip;
   Vector2 tooltipAt{};
   int focusField = -1;  // active text field id
+  bool modalActive = false;  // when set, only the modal rectangle receives the mouse
+  Rectangle modal{};
 
   void load();
   void unload();

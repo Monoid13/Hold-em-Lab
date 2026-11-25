@@ -26,6 +26,26 @@ std::string hudLine(const StatsBook& s, const std::string& id) {
   return v("vpip") + "/" + v("pfr") + "/" + afs + " \xC2\xB7 " + std::to_string(p.hands) + "h";
 }
 
+bool actionButton(Gui& g, Rectangle r, const std::string& label, const std::string& caption, Btn style, bool enabled, bool suggested, const std::string& tip) {
+  bool clicked = g.button(r, caption.empty() ? label : "", style, enabled, 16);
+  if (!caption.empty()) {
+    Color ink = style == Btn::Raise ? Color{255, 226, 163, 255} : theme::text;
+    if (!enabled) ink = withAlpha(ink, 0.45f);
+    g.textCentered(label, {r.x, r.y + 4, r.width, r.height * 0.55f}, 16, ink, true);
+    g.textCentered(caption, {r.x, r.y + r.height * 0.52f, r.width, r.height * 0.4f}, 12, withAlpha(ink, enabled ? 0.75f : 0.4f));
+  }
+  if (suggested && enabled) {
+    DrawRectangleRoundedLinesEx({r.x - 3, r.y - 3, r.width + 6, r.height + 6}, 0.3f, 8, 2.5f, theme::accent);
+    const char* tag = "\xE2\x98\x85 Suggested";
+    Vector2 m = g.measure(tag, 11, true);
+    Rectangle pill{r.x + r.width - m.x - 18, r.y + 4, m.x + 12, 17};
+    DrawRectangleRounded(pill, 1, 8, theme::accent);
+    g.textCentered(tag, pill, 11, theme::accentInk, true);
+  }
+  if (!tip.empty() && g.hover(r)) g.setTooltip(tip);
+  return clicked;
+}
+
 void bubble(Gui& g, const std::string& text, Vector2 anchorTop, Color fill, Color ink, float size = 13) {
   Vector2 m = g.measure(text, size, true);
   Rectangle r{anchorTop.x - m.x / 2 - 9, anchorTop.y, m.x + 18, m.y + 6};
@@ -88,10 +108,40 @@ void PlayScreen::handleKeys(App& app) {
 void PlayScreen::draw(App& app, Rectangle area) {
   float sideW = area.width >= 1180 ? 350 : 300;
   Rectangle tableCol{area.x, area.y, area.width - sideW - 14, area.height};
-  float barH = 128;
-  drawTable(app, {tableCol.x, tableCol.y, tableCol.width, tableCol.height - barH - 10});
+  float barH = app.settings.beginnerMode ? 138 : 128;
+  Rectangle tableR{tableCol.x, tableCol.y, tableCol.width, tableCol.height - barH - 10};
+  drawTable(app, tableR);
+  drawStatus(app, tableR);
   drawActionBar(app, {tableCol.x, tableCol.y + tableCol.height - barH, tableCol.width, barH});
   drawSidebar(app, {area.x + area.width - sideW, area.y, sideW, area.height});
+}
+
+void PlayScreen::drawStatus(App& app, Rectangle r) {
+  Gui& g = app.g;
+  GameController& c = app.ctrl;
+  if (g.button({r.x + r.width - 168, r.y, 168, 30}, "Hand rankings  [?]", Btn::Ghost, true, 12.5f)) app.showRankings = true;
+  if (!app.settings.beginnerMode || !c.table || !c.table->hasHand) return;
+  const Hand& h = c.table->hand;
+  std::string msg;
+  if (c.st.handOver) msg = "Hand over. Press Space (or Deal next hand) to play the next one.";
+  else if (h.finished) msg = "Everyone left is all-in: the remaining cards are dealt automatically.";
+  else {
+    switch (h.street) {
+      case Street::Preflop: msg = "Pre-flop: everyone has 2 private cards. "; break;
+      case Street::Flop: msg = "Flop: 3 shared cards are face up. Everyone combines them with their own 2 cards. "; break;
+      case Street::Turn: msg = "Turn: a 4th shared card. "; break;
+      case Street::River: msg = "River: the 5th and last shared card. Best 5-card hand wins. "; break;
+      default: break;
+    }
+    if (c.st.awaitingHero) msg += "Your turn - choose an action below.";
+    else if (h.p(c.heroSeat).inHand && h.p(c.heroSeat).folded) msg += "You folded; watch how the hand plays out.";
+    else if (c.st.thinkingSeat >= 0) msg += c.table->seats[c.st.thinkingSeat].name + " is deciding...";
+  }
+  float w = std::min(360.f, r.width * 0.3f);
+  float hgt = g.wrappedHeight(msg, w - 20, 13.5f, c.st.awaitingHero) + 14;
+  Rectangle box{r.x, r.y, w, hgt};
+  DrawRectangleRounded(box, 0.25f, 8, Color{0, 0, 0, 110});
+  g.textWrapped(msg, box.x + 10, box.y + 7, w - 20, 13.5f, c.st.awaitingHero ? theme::accent : theme::text2, c.st.awaitingHero);
 }
 
 void PlayScreen::drawTable(App& app, Rectangle r) {
@@ -163,6 +213,15 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
           g.card(hp->hole[k], cr, !reveal, finishedShown && bestCards.count(hp->hole[k]), hp->folded);
         }
       }
+    }
+    if (isHero && hp && !hp->folded && set.beginnerMode && !finishedShown) {
+      std::vector<Card> b(h.board.begin(), h.board.begin() + (runningOut ? st.revealCount : static_cast<int>(h.board.size())));
+      HandAnalysis ha = analyzeHand({hp->hole[0], hp->hole[1]}, b);
+      std::string lab = "You have: " + ha.name + (ha.detail == "pair on board" || ha.detail == "playing the board" ? " (shared with everyone)" : "");
+      Vector2 m = g.measure(lab, 13, true);
+      Rectangle lr{box.x + box.width + 12, box.y + 13, m.x + 18, 24};
+      DrawRectangleRounded(lr, 1, 8, Color{0, 0, 0, 150});
+      g.textCentered(lab, lr, 13, theme::accent, true);
     }
     // box
     bool acting = has && !h.finished && h.actor == i;
@@ -351,26 +410,45 @@ void PlayScreen::drawActionBar(App& app, Rectangle r) {
     if (h.street == Street::Preflop) amount_ = h.raiseCount == 0 ? static_cast<int>(std::lround(2.5 * h.bb)) : l.currentBet * 3;
     else if (l.canBet) amount_ = l.myBet + static_cast<int>(std::lround(0.5 * l.pot));
     else amount_ = static_cast<int>(std::lround(l.currentBet * 2.5));
+    const auto& sp = c.st.spot;
+    if (app.settings.beginnerMode && app.settings.showSuggestion && sp && (sp->recommended.type == Act::Bet || sp->recommended.type == Act::Raise))
+      amount_ = sp->recommended.amount;  // pre-fill the suggested size
     amount_ = std::clamp(amount_, l.minTo, l.maxTo);
   }
   // info row
+  const bool beginner = app.settings.beginnerMode;
   std::string info = "Pot " + fmtInt(l.pot);
-  if (l.toCall > 0) info += "     To call " + fmtInt(l.toCall) + "     Need " + pct(static_cast<double>(l.toCall) / (l.pot + l.toCall)) + " equity";
-  else info += "     No bet to you";
-  info += "     Stack " + fmtInt(l.stack);
+  if (beginner) {
+    info += l.toCall > 0 ? "     It costs " + fmtInt(l.toCall) + " to stay in" : "     Nobody has bet - you can check for free";
+    info += "     Your chips " + fmtInt(l.stack);
+  } else {
+    if (l.toCall > 0) info += "     To call " + fmtInt(l.toCall) + "     Need " + pct(static_cast<double>(l.toCall) / (l.pot + l.toCall)) + " equity";
+    else info += "     No bet to you";
+    info += "     Stack " + fmtInt(l.stack);
+  }
   g.text(info, x, y + 2, 14, theme::text2);
   if (g.button({r.x + r.width - 120, y - 3, 106, 28}, "Hint [H]", Btn::Ghost, true, 13)) perform(app, "hint");
   // main buttons
   y += 30;
   bool canAgg = l.canBet || l.canRaise;
   float bwid = (r.width - 28 - 16) / 3;
-  float bh = 42;
-  if (g.button({x, y, bwid, bh}, "Fold  [F]", Btn::Fold, !l.canCheck, 16)) perform(app, "fold");
+  float bh = beginner ? 50 : 42;
+  const auto& sp = c.st.spot;
+  Act rec = (beginner && app.settings.showSuggestion && sp) ? sp->recommended.type : Act::AllIn;
+  if (actionButton(g, {x, y, bwid, bh}, "Fold  [F]", beginner ? plainAction(Act::Fold) : "", Btn::Fold, !l.canCheck, rec == Act::Fold,
+                   l.canCheck ? "Checking is free, so there is no reason to fold." : "Fold: give up this hand. You lose what you already put in, nothing more."))
+    perform(app, "fold");
   std::string callLabel = l.toCall > 0 ? (l.toCall >= l.stack ? "Call all-in " : "Call ") + fmtInt(l.toCall) + "  [C]" : "Check  [C]";
-  if (g.button({x + bwid + 8, y, bwid, bh}, callLabel, Btn::Call, true, 16)) perform(app, "call");
+  if (actionButton(g, {x + bwid + 8, y, bwid, bh}, callLabel, beginner ? plainAction(l.toCall > 0 ? Act::Call : Act::Check) : "", Btn::Call, true, rec == Act::Call || rec == Act::Check,
+                   l.toCall > 0 ? "Call: put in the same amount as the current bet to stay in the hand." : "Check: stay in without betting. Only possible when nobody has bet."))
+    perform(app, "call");
   if (canAgg) {
-    std::string rl = amount_ >= l.maxTo ? "All-in " + fmtInt(l.maxTo) : (l.canBet ? "Bet " : "Raise to ") + fmtInt(amount_);
-    if (g.button({x + 2 * (bwid + 8), y, bwid, bh}, rl + "  [R]", Btn::Raise, true, 16)) perform(app, "raise");
+    bool allIn = amount_ >= l.maxTo;
+    std::string rl = allIn ? "All-in " + fmtInt(l.maxTo) : (l.canBet ? "Bet " : "Raise to ") + fmtInt(amount_);
+    if (actionButton(g, {x + 2 * (bwid + 8), y, bwid, bh}, rl + "  [R]", beginner ? plainAction(allIn ? Act::AllIn : l.canBet ? Act::Bet : Act::Raise) : "", Btn::Raise, true,
+                     rec == Act::Bet || rec == Act::Raise,
+                     l.canBet ? "Bet: put chips in first. Other players must match it to stay in. Choose the size below." : "Raise: bet more than the current bet. Choose the size below."))
+      perform(app, "raise");
   }
   // sizing
   y += bh + 8;
@@ -413,6 +491,99 @@ void PlayScreen::drawActionBar(App& app, Rectangle r) {
     g.text("No raise possible (everyone else is all-in or the action is not re-opened).", x, y + 6, 13, theme::muted);
 }
 
+float PlayScreen::drawBeginnerPanel(App& app, Rectangle area) {
+  Gui& g = app.g;
+  GameController& c = app.ctrl;
+  const Hand& h = c.table->hand;
+  const HandPlayer& hp = h.p(c.heroSeat);
+  const std::optional<Spot>& spot = c.st.spot;
+  const float pad = 14, w = area.width, tw = w - pad * 2;
+  struct Line {
+    std::string text;
+    float size;
+    Color color;
+    bool bold;
+    float indent;
+  };
+  std::vector<Line> lines;
+  int level = -1;
+  std::string strength;
+  bool suggestionBox = false;
+  PlainAdvice adv;
+  bool myTurn = c.st.awaitingHero && spot && !hp.folded;
+  if (hp.folded) {
+    lines.push_back({"You folded this hand. Watch what the others had - it is a good way to learn.", 13.5f, theme::text2, false, 0});
+  } else if (myTurn) {
+    adv = beginnerAdvice(*spot);
+    level = adv.level;
+    strength = adv.strengthWord;
+    lines.push_back({adv.handLine, 14, theme::text, false, 0});
+    suggestionBox = app.settings.showSuggestion || hintShown_;
+  } else {
+    int nb = static_cast<int>(h.board.size());
+    if (h.finished && c.st.revealCount < 5) nb = c.st.revealCount;
+    std::vector<Card> b(h.board.begin(), h.board.begin() + nb);
+    HandAnalysis ha = analyzeHand({hp.hole[0], hp.hole[1]}, b);
+    lines.push_back({"You have " + ha.name + (ha.detail.empty() || b.empty() ? "" : " (" + ha.detail + ")") + ".", 14, theme::text, false, 0});
+    if (!h.finished) lines.push_back({"Waiting for your turn...", 13, theme::muted, false, 0});
+  }
+  // measure
+  float hgt = 44;
+  if (level >= 0) hgt += 34;
+  for (auto& l : lines) hgt += g.wrappedHeight(l.text, tw - l.indent, l.size, l.bold) + 4;
+  bool showChance = myTurn && !spot->isPreflop;
+  if (showChance) hgt += 46;
+  float boxH = 0;
+  if (suggestionBox) {
+    boxH = 16 + g.wrappedHeight("Suggested: " + adv.suggestion, tw - 20, 14.5f, true) + 6;
+    for (auto& r : adv.reasons) boxH += g.wrappedHeight(r, tw - 34, 13) + 4;
+    hgt += boxH + 10;
+  } else if (myTurn)
+    hgt += 42;
+  Rectangle pr{area.x, area.y, w, hgt};
+  g.panel(pr, "Your hand");
+  g.textRight(cardsPretty({hp.hole[0], hp.hole[1]}), pr.x + pr.width - pad, pr.y + 12, 16, theme::text, true);
+  float y = pr.y + 42;
+  if (level >= 0) {
+    float segW = (tw - 4 * 4) / 5;
+    for (int i = 0; i < 5; ++i) {
+      Rectangle seg{pr.x + pad + i * (segW + 4), y, segW, 10};
+      DrawRectangleRounded(seg, 1, 6, i <= level ? theme::series : theme::surface3);
+    }
+    g.text("Strength: " + strength, pr.x + pad, y + 15, 13, theme::text2, true);
+    if (g.hover({pr.x + pad, y - 2, tw, 32})) g.setTooltip("How strong your hand is right now compared with the hands your opponents are likely to hold.");
+    y += 34;
+  }
+  for (auto& l : lines) y += g.textWrapped(l.text, pr.x + pad + l.indent, y, tw - l.indent, l.size, l.color, l.bold) + 4;
+  if (showChance) {
+    double eq = spot->equity, need = spot->needed;
+    Rectangle bar{pr.x + pad, y + 4, tw, 12};
+    DrawRectangleRounded(bar, 1, 6, theme::surface3);
+    DrawRectangleRounded({bar.x, bar.y, static_cast<float>(bar.width * eq), bar.height}, 1, 6, theme::series);
+    if (need > 0) DrawRectangle(static_cast<int>(bar.x + bar.width * need) - 1, static_cast<int>(bar.y - 4), 2, 20, theme::text);
+    std::string leg = "Chance to win about " + pct(eq);
+    if (need > 0) leg += "   \xC2\xB7   needed to call: " + pct(need);
+    g.text(leg, bar.x, bar.y + 18, 12.5f, theme::text2);
+    if (g.hover({bar.x, bar.y - 4, bar.width, 40}))
+      g.setTooltip("Blue: how often your hand wins against the hands the bots are likely to have. White mark: how often you need to win for calling to pay off.");
+    y += 46;
+  }
+  if (suggestionBox) {
+    Rectangle sb{pr.x + pad, y + 4, tw, boxH};
+    DrawRectangleRounded(sb, 0.12f, 6, theme::surface2);
+    DrawRectangleRoundedLinesEx(sb, 0.12f, 6, 1.5f, theme::accent);
+    float yy = sb.y + 8;
+    yy += g.textWrapped("Suggested: " + adv.suggestion, sb.x + 10, yy, tw - 20, 14.5f, theme::accent, true) + 6;
+    for (auto& rs : adv.reasons) {
+      g.text("\xE2\x80\xA2", sb.x + 10, yy, 13, theme::muted);
+      yy += g.textWrapped(rs, sb.x + 24, yy, tw - 34, 13, theme::text2) + 4;
+    }
+  } else if (myTurn) {
+    if (g.button({pr.x + pad, y + 6, tw, 30}, "What should I do?  [H]", Btn::Ghost, true, 13)) perform(app, "hint");
+  }
+  return hgt;
+}
+
 void PlayScreen::drawSidebar(App& app, Rectangle r) {
   Gui& g = app.g;
   GameController& c = app.ctrl;
@@ -423,8 +594,10 @@ void PlayScreen::drawSidebar(App& app, Rectangle r) {
   const float w = r.width - 8;
   const float pad = 14;
 
-  // --- HUD ---
-  if (set.showHud && c.table && c.table->hasHand && c.table->hand.p(c.heroSeat).inHand) {
+  // --- beginner panel / HUD ---
+  if (set.beginnerMode && c.table && c.table->hasHand && c.table->hand.p(c.heroSeat).inHand) {
+    y += drawBeginnerPanel(app, {r.x, y, w, 0}) + 12;
+  } else if (set.showHud && c.table && c.table->hasHand && c.table->hand.p(c.heroSeat).inHand) {
     const Hand& h = c.table->hand;
     const HandPlayer& hp = h.p(c.heroSeat);
     int nb = static_cast<int>(h.board.size());
@@ -519,10 +692,18 @@ void PlayScreen::drawSidebar(App& app, Rectangle r) {
     if (show) {
       who = "You: " + lg->heroLabel + (lg->grade != GradeLevel::Best ? "  \xC2\xB7  Coach: " + lg->bestLabel : "");
       lines = lg->lines;
+      if (set.beginnerMode) {  // plain verdict first, then only the key details
+        who = plainSummary(*lg);
+        std::vector<std::string> keep;
+        for (size_t i = 1; i < lines.size() && keep.size() < 3; ++i)
+          if (lines[i].rfind("EV estimates", 0) != 0 && lines[i].rfind("Coach strategy", 0) != 0) keep.push_back(lines[i]);
+        keep.push_back("The Review tab has the full breakdown of every hand.");
+        lines = keep;
+      }
       hh += 34 + g.wrappedHeight(who, w - pad * 2, 13.5f, true) + 4;
       for (auto& l : lines) hh += g.wrappedHeight(l, w - pad * 2 - 12, 13) + 4;
     } else
-      hh += g.wrappedHeight("Make a decision and the coach will grade it against the estimated EV of every option.", w - pad * 2, 13) + 4;
+      hh += g.wrappedHeight("Make a decision and the coach will tell you how good it was.", w - pad * 2, 13) + 4;
     Rectangle pr{r.x, y, w, hh};
     g.panel(pr, "Coach", sub);
     float yy = pr.y + 42;
@@ -542,7 +723,7 @@ void PlayScreen::drawSidebar(App& app, Rectangle r) {
         yy += g.textWrapped(l, pr.x + pad + 12, yy, w - pad * 2 - 12, 13, theme::text2) + 4;
       }
     } else
-      g.textWrapped("Make a decision and the coach will grade it against the estimated EV of every option.", pr.x + pad, yy, w - pad * 2, 13, theme::muted);
+      g.textWrapped("Make a decision and the coach will tell you how good it was.", pr.x + pad, yy, w - pad * 2, 13, theme::muted);
     y += hh + 12;
   }
 

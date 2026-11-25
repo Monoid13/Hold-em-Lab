@@ -170,7 +170,7 @@ void GameController::next() {
   st.awaitingHero = false;
   Decision d = decideBot(*table, seat, profile(bot.profileKey), &bot.memory, *tracker, rng_);
   int handId = table->hand.id;
-  schedule(speed(d.thinkMs), [this, handId, seat, d] { applyBot(handId, seat, d); });
+  schedule(gap(d.thinkMs), [this, handId, seat, d] { applyBot(handId, seat, d); });
 }
 
 void GameController::applyBot(int handId, int seat, const Decision& d) {
@@ -220,7 +220,7 @@ void GameController::apply(int seat, Action a) {
     std::string s = streetName(table->hand.street);
     s[0] = static_cast<char>(std::toupper(s[0]));
     st.log.push_back(s + ": " + cardsPretty(table->hand.board));
-    schedule(speed(650), [this] { next(); });
+    schedule(gap(900), [this] { next(); });  // let new cards land before anyone acts
     return;
   }
   if (table->hand.finished) handEnd();
@@ -246,7 +246,7 @@ void GameController::handEnd() {
     st.allInEquity.clear();
     for (size_t i = 0; i < seats.size(); ++i) st.allInEquity[seats[i]] = eqs[i];
     st.revealCount = h.runoutFrom;
-    schedule(speed(1300), [this] { runoutStep(); });
+    schedule(gap(1300), [this] { runoutStep(); });
     return;
   }
   settle();
@@ -256,9 +256,9 @@ void GameController::runoutStep() {
   st.revealCount = st.revealCount == 0 ? 3 : st.revealCount + 1;
   if (st.revealCount >= 5) {
     st.revealCount = 5;
-    schedule(speed(700), [this] { settle(); });
+    schedule(gap(800), [this] { settle(); });
   } else
-    schedule(speed(1100), [this] { runoutStep(); });
+    schedule(gap(1200), [this] { runoutStep(); });
 }
 
 void GameController::settle() {
@@ -312,7 +312,7 @@ void GameController::settle() {
   record_.steps.push_back(fin);
   history.add(record_);
   st.handOver = true;
-  if (settings.autoDeal) schedule(speed(res.uncontested ? 1600 : 3200) + (settings.speed == "instant" ? 300 : 0), [this] { deal(); });
+  if (settings.autoDeal) schedule(std::max(speed(res.uncontested ? 2000 : 4500), settings.minBotGapMs() * 2) + (settings.speed == "instant" ? 300 : 0), [this] { deal(); });
 }
 
 void GameController::chat(int seat, const std::string& text) {

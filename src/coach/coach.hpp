@@ -52,6 +52,20 @@ struct Grade {
   double equity = 0, needed = 0;
 };
 
+/** Plain-language guidance for beginners (no jargon). */
+struct PlainAdvice {
+  int level = 0;              // 0 weak .. 4 very strong
+  std::string strengthWord;   // "Weak", "So-so", "Decent", "Strong", "Very strong"
+  std::string handLine;       // "You have a Pair of Kings (top pair)."
+  std::string suggestion;     // "Call 6 - match the bet"
+  std::vector<std::string> reasons;
+};
+PlainAdvice beginnerAdvice(const Spot& spot);
+/** One-line verdict on a graded decision, e.g. "Mistake: folding was better here." */
+std::string plainSummary(const Grade& g);
+/** Short explanation of what an action does, e.g. "match the bet". */
+std::string plainAction(Act type);
+
 Spot analyzeSpot(const Table& t, int seat, RangeTracker& tracker, Rng& rng, int iterations = 1600);
 Grade gradeDecision(const Spot& spot, Action action);
 std::string actionLabel(Act type, int amount, const View& v);

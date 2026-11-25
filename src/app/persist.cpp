@@ -64,9 +64,16 @@ void clearAllData() {
 // ---------- settings ----------
 double Settings::speedFactor() const {
   if (speed == "instant") return 0.04;
-  if (speed == "fast") return 0.35;
-  if (speed == "realistic") return 1.15;
-  return 0.75;
+  if (speed == "fast") return 0.45;
+  if (speed == "relaxed") return 1.5;
+  return 1.0;
+}
+
+double Settings::minBotGapMs() const {
+  if (speed == "instant") return 0;
+  if (speed == "fast") return 500;
+  if (speed == "relaxed") return 1600;
+  return 1000;
 }
 
 Json Settings::toJson() const {
@@ -92,6 +99,9 @@ Json Settings::toJson() const {
   j["autoDeal"] = autoDeal;
   j["allInEquity"] = allInEquity;
   j["revealInReview"] = revealInReview;
+  j["beginnerMode"] = beginnerMode;
+  j["showSuggestion"] = showSuggestion;
+  j["seenWelcome"] = seenWelcome;
   return j;
 }
 
@@ -111,6 +121,7 @@ Settings Settings::fromJson(const Json& j) {
   s.autoRebuy = j["autoRebuy"].asBool(s.autoRebuy);
   s.levelHands = std::clamp(j["levelHands"].asInt(s.levelHands), 3, 50);
   s.speed = j["speed"].asStr(s.speed);
+  if (s.speed == "realistic") s.speed = "relaxed";
   s.coachMode = j["coachMode"].asStr(s.coachMode);
   s.showHud = j["showHud"].asBool(s.showHud);
   s.showOppStats = j["showOppStats"].asBool(s.showOppStats);
@@ -120,6 +131,9 @@ Settings Settings::fromJson(const Json& j) {
   s.autoDeal = j["autoDeal"].asBool(s.autoDeal);
   s.allInEquity = j["allInEquity"].asBool(s.allInEquity);
   s.revealInReview = j["revealInReview"].asBool(s.revealInReview);
+  s.beginnerMode = j["beginnerMode"].asBool(s.beginnerMode);
+  s.showSuggestion = j["showSuggestion"].asBool(s.showSuggestion);
+  s.seenWelcome = j["seenWelcome"].asBool(s.seenWelcome);
   return s;
 }
 
