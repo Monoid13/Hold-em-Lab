@@ -41,6 +41,7 @@ struct GameState {
   bool awaitingHero = false;
   std::optional<Spot> spot;
   int thinkingSeat = -1;
+  double thinkFrom = 0, thinkUntil = 0;  // ms timestamps for the thinking bot (drawn as a countdown ring)
   std::map<int, std::string> flashes;
   std::map<int, ChatBubble> chats;
   int revealCount = 5;

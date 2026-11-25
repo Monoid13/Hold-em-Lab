@@ -29,13 +29,14 @@ void App::drawTopBar(float h) {
   static const char* tabs[] = {"Play", "Learn", "Review", "Stats", "Drills", "Ranges", "Settings"};
   float x = 190;
   for (int i = 0; i < TAB_COUNT; ++i) {
-    float w = g.measure(tabs[i], 15, true).x + 26;
+    float w = g.measure(tabs[i], 15, true).x + 50;
     Rectangle r{x, h / 2 - 17, w, 34};
     bool on = static_cast<int>(tab) == i;
     bool hv = g.hover(r);
     if (on || hv) DrawRectangleRounded(r, 0.35f, 8, on ? theme::surface3 : theme::surface2);
     if (on) DrawRectangleRounded({r.x + 10, h - 4, r.width - 20, 3}, 1, 4, theme::accent);
-    g.textCentered(tabs[i], r, 15, on ? theme::text : theme::text2, on);
+    g.icon(static_cast<Gui::Icon>(i), {r.x + 21, r.y + r.height / 2}, 16, on ? theme::accent : theme::muted);
+    g.text(tabs[i], r.x + 35, r.y + r.height / 2 - g.measure(tabs[i], 15, true).y / 2, 15, on ? theme::text : theme::text2, on);
     if (hv && g.released) {
       tab = static_cast<Tab>(i);
       if (tab == Tab::Settings) settingsScreen_.reset();
@@ -82,6 +83,7 @@ void App::frame() {
   ClearBackground(theme::bg);
   rlPushMatrix();
   rlScalef(uiScale(), uiScale(), 1);  // everything below is drawn in logical units
+  g.backdrop({0, 0, screenW(), screenH()});
   const float barH = 56;
   Rectangle area{14, barH + 12, screenW() - 28.f, screenH() - barH - 24.f};
   switch (tab) {

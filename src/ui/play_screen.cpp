@@ -147,6 +147,15 @@ void PlayScreen::drawStatus(App& app, Rectangle r) {
   g.textWrapped(msg, box.x + 10, box.y + 7, w - 20, 13.5f, c.st.awaitingHero ? theme::accent : theme::text2, c.st.awaitingHero);
 }
 
+// colour coding for actions: fold grey, check/call green, bet/raise gold, all-in red
+static Color actionColor(const std::string& f) {
+  if (f.rfind("Fold", 0) == 0) return Color{120, 126, 122, 255};
+  if (f.rfind("All", 0) == 0) return Color{208, 68, 58, 255};
+  if (f.rfind("Bet", 0) == 0 || f.rfind("Raise", 0) == 0) return Color{222, 170, 62, 255};
+  if (f.rfind("Check", 0) == 0 || f.rfind("Call", 0) == 0) return Color{46, 160, 104, 255};
+  return Color{90, 130, 200, 255};
+}
+
 void PlayScreen::drawTable(App& app, Rectangle r) {
   Gui& g = app.g;
   GameController& c = app.ctrl;
@@ -188,16 +197,27 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     for (auto& p : specks)
       DrawRectangleRec({cx + p.x * rx, cy + p.y * ry, 1.5f, 1.5f}, p.z < 0.5f ? Color{255, 255, 255, 9} : Color{0, 0, 0, 22});
   }
-  {
+  // only draw the watermark where the bottom seat's cards and chips won't cover it
+  float heroCardsTop = std::clamp(cy + ry + 30, r.y, r.y + r.height - 50 - 30) - 25 - std::clamp(r.height * 0.075f, 30.f, 54.f) * 1.4f + 12;
+  if (cy + ry * 0.42f + 52 < heroCardsTop - 26) {
     const char* wm = "\xE2\x99\xA0  HOLD'EM LAB";
     Vector2 m = g.measure(wm, 30, true);
     g.text(wm, cx - m.x / 2, cy + ry * 0.42f, 30, Color{255, 255, 255, 16}, true);
+    if (has) {
+      std::string pl = "NO-LIMIT HOLD'EM  \xC2\xB7  BLINDS " + std::to_string(h.sb) + "/" + std::to_string(h.bb) + (h.ante ? "  \xC2\xB7  ANTE " + std::to_string(h.ante) : "") + "  \xC2\xB7  HAND #" + std::to_string(h.id);
+      Vector2 pm = g.measure(pl, 11, true);
+      g.text(pl, cx - pm.x / 2, cy + ry * 0.42f + 36, 11, Color{255, 255, 255, 30}, true);
+    }
+    // faint arc of the betting line
+    DrawEllipseLines(icx, icy, rx * 0.80f, ry * 0.76f, Color{255, 255, 255, 14});
   }
 
   // card deal animation: remember when each card first appeared
   if (!has || h.id != animHand_) {
     animHand_ = has ? h.id : -1;
     cardSeen_.clear();
+    floaters_.clear();
+    lastFlash_.clear();
   }
   const double now = GetTime();
   int newThisFrame = 0;
@@ -227,6 +247,7 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
   float cardW = std::clamp(r.height * 0.075f, 30.f, 54.f), cardH = cardW * 1.4f;
   float boxW = std::clamp(r.width * 0.15f, 120.f, 170.f), boxH = 50;
   int potTotal = 0;
+  std::map<int, Vector2> seatPos;
   for (int i = 0; i < n; ++i) {
     const SeatPlayer& p = t.seats[i];
     if (!p.occupied) continue;
@@ -246,6 +267,7 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     if (hp) potTotal += runningOut ? hp->contrib : bet;
     bool folded = !hp || hp->folded;
     Rectangle box{pos.x - boxW / 2, pos.y - boxH / 2, boxW, boxH};
+    seatPos[i] = pos;
 
     // cards
     if (hp) {
@@ -283,9 +305,20 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     Color line = acting ? theme::accent : winner ? theme::gain : theme::border;
     DrawRectangleRoundedLinesEx(box, 0.3f, 8, acting || winner ? 2.f : 1.f, line);
     unsigned col = isHero ? 0xe6b450 : (c.bots.count(i) ? c.bots[i].color : 0x888888);
+    Color pc = hexColor(col);
+    DrawRectangleRounded({box.x + 2, box.y + box.height - 4, box.width - 4, 3}, 1, 4, withAlpha(pc, folded ? 0.25f : 0.8f));  // player colour strip
     Vector2 av{box.x + 24, pos.y};
-    DrawCircleV(av, 15, folded ? withAlpha(hexColor(col), 0.45f) : hexColor(col));
+    float fa = folded ? 0.45f : 1.f;
+    DrawCircleV({av.x, av.y + 1.5f}, 17, Color{0, 0, 0, 120});
+    DrawCircleV(av, 16.5f, withAlpha(Color{static_cast<unsigned char>(pc.r * 0.55f), static_cast<unsigned char>(pc.g * 0.55f), static_cast<unsigned char>(pc.b * 0.55f), 255}, fa));
+    DrawCircleV(av, 14.5f, withAlpha(pc, fa));
+    DrawCircleV({av.x - 4, av.y - 5}, 7, withAlpha(WHITE, 0.22f * fa));  // gloss
     g.textCentered(isHero ? "You" : p.name.substr(0, 1), {av.x - 15, av.y - 15, 30, 30}, isHero ? 11 : 15, theme::accentInk, true);
+    if (st.thinkingSeat == i && st.thinkUntil > st.thinkFrom) {  // countdown ring while the bot thinks
+      float k = static_cast<float>(std::clamp((c.now() - st.thinkFrom) / (st.thinkUntil - st.thinkFrom), 0.0, 1.0));
+      DrawRing(av, 17.5f, 20.f, -90, 270, 40, Color{0, 0, 0, 120});
+      DrawRing(av, 17.5f, 20.f, -90 + 360 * k, 270, 40, theme::accent);
+    }
     Color ink = folded ? theme::muted : theme::text;
     std::string posLabel = hp ? hp->position : "";
     float nameMax = boxW - 52 - (posLabel.empty() ? 0 : g.measure(posLabel, 11, true).x + 12) - (st.thinkingSeat == i ? 30 : 0);
@@ -297,7 +330,8 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
       DrawRectangleRounded(pr, 0.4f, 6, theme::surface3);
       g.textCentered(posLabel, pr, 11, theme::text2, true);
     }
-    g.text(p.stack <= 0 && !hp ? "busted" : fmtInt(stack), box.x + 46, box.y + 27, 14, folded ? withAlpha(theme::accent, 0.5f) : theme::accent);
+    g.icon(Gui::IconChip, {box.x + 52, box.y + 35}, 11, folded ? withAlpha(theme::accent, 0.5f) : theme::accent);
+    g.text(p.stack <= 0 && !hp ? "busted" : fmtInt(stack), box.x + 61, box.y + 27, 14, folded ? withAlpha(theme::accent, 0.5f) : theme::accent);
     if (st.thinkingSeat == i) {
       for (int k = 0; k < 3; ++k) {
         float ph = static_cast<float>(std::fmod(GetTime() * 2.5 + k * 0.33, 1.0));
@@ -344,15 +378,36 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
       auto paren = f.find(" (");
       if (paren != std::string::npos) f = f.substr(0, paren);  // "Bet 40 (1/2 pot)" -> "Bet 40"
       Vector2 m = g.measure(f, 11.5f, true);
-      float stackEnd = box.x + 46 + g.measure(fmtInt(stack), 14).x + 8;
+      float stackEnd = box.x + 61 + g.measure(fmtInt(stack), 14).x + 6;
       Rectangle pill{std::max(stackEnd, box.x + box.width - m.x - 22), box.y + 26, m.x + 14, 18};
-      DrawRectangleRounded(pill, 1, 8, Color{243, 241, 234, 255});
-      g.textCentered(f, pill, 11.5f, Color{26, 26, 26, 255}, true);
+      Color ac = actionColor(f);
+      DrawRectangleRounded(pill, 1, 8, ac);
+      DrawRectangleRounded({pill.x + 1, pill.y + 1, pill.width - 2, pill.height / 2}, 1, 8, Color{255, 255, 255, 40});
+      g.textCentered(f, pill, 11.5f, f.rfind("Bet", 0) == 0 || f.rfind("Raise", 0) == 0 ? Color{40, 28, 6, 255} : WHITE, true);
+      if (lastFlash_[i] != fl->second) {
+        lastFlash_[i] = fl->second;
+        floaters_[i] = {f, now};
+      }
+    } else lastFlash_.erase(i);
+    auto flo = floaters_.find(i);
+    if (flo != floaters_.end()) {  // the action word rises and fades above the seat
+      float k = static_cast<float>((now - flo->second.start) / 1.1);
+      if (k >= 1) floaters_.erase(flo);
+      else {
+        Color ac = actionColor(flo->second.text);
+        float y = box.y - 8 - 34 * k - (hp && !folded ? cardH - 12 : 0);
+        Vector2 m = g.measure(flo->second.text, 16, true);
+        g.text(flo->second.text, pos.x - m.x / 2 + 1, y + 1, 16, withAlpha(BLACK, 0.6f * (1 - k)), true);
+        g.text(flo->second.text, pos.x - m.x / 2, y, 16, withAlpha(ac, 1 - k * k), true);
+      }
     }
     auto chat = st.chats.find(i);
     if (chat != st.chats.end()) bubble(g, chat->second.text, {pos.x, box.y - cardH - 6}, WHITE, Color{34, 34, 34, 255}, 12.5f);
     if (bet > 0) {
       Vector2 bp{cx + rx * 0.70f * ca, cy + ry * 0.62f * sa};
+      float cardsTop = box.y - cardH + 12;
+      if (sa > 0.5f) bp.y = std::min(bp.y, cardsTop - 16);           // seats at the bottom: chips above their cards
+      else if (sa < -0.5f) bp.y = std::max(bp.y, box.y + box.height + 16);  // seats at the top: chips below the box
       std::string bt = fmtInt(bet);
       Vector2 m = g.measure(bt, 13, true);
       g.chipStack({bp.x - (m.x + 26) / 2 + 9, bp.y + 4}, bet, h.bb, 9);
@@ -388,6 +443,39 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     g.chipStack({pr.x - 16, pr.y + 18}, potShown, h.bb, 11);
     DrawRectangleRounded(pr, 1, 8, Color{0, 0, 0, 110});
     g.textCentered(pt, pr, 15, Color{230, 242, 234, 255}, true);
+    // side pots appear once someone is all-in and the betting on this street has settled
+    bool allInSomeone = false, settled = true;
+    for (int s2 : h.order) {
+      const HandPlayer& q = h.p(s2);
+      if (!q.folded && q.stack == 0) allInSomeone = true;
+      if (q.bet != 0) settled = false;
+    }
+    if (allInSomeone && (settled || runningOut)) {
+      auto pots = t.buildPots();
+      if (pots.size() > 1) {
+        std::string sp;
+        for (size_t k = 0; k < pots.size(); ++k) sp += (k ? "   \xC2\xB7   " : "") + std::string(k == 0 ? "Main " : "Side " + std::to_string(k) + " ") + fmtInt(pots[k].amount);
+        Vector2 sm = g.measure(sp, 12, true);
+        Rectangle sr{cx - sm.x / 2 - 10, pr.y + pr.height + 4, sm.x + 20, 20};
+        DrawRectangleRounded(sr, 1, 8, Color{0, 0, 0, 90});
+        g.textCentered(sp, sr, 12, Color{255, 230, 170, 255}, true);
+      }
+    }
+  }
+  if (finishedShown) {  // chips fly from the middle to each winner
+    if (winAnimHand_ != h.id) {
+      winAnimHand_ = h.id;
+      winAnimStart_ = now;
+    }
+    float k = static_cast<float>((now - winAnimStart_) / 0.7);
+    if (k < 1)
+      for (auto& [seat, amt] : h.results.winnings) {
+        if (amt <= 0 || !seatPos.count(seat)) continue;
+        float e = 1 - (1 - k) * (1 - k) * (1 - k);
+        Vector2 to = seatPos[seat];
+        Vector2 p{cx + (to.x - cx) * e, by + bh + 26 + (to.y - (by + bh + 26)) * e - std::sin(k * PI) * 30};
+        g.chipStack(p, amt, h.bb, 10);
+      }
   }
   std::string msg;
   if (finishedShown) {
@@ -407,8 +495,21 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     msg = "Blinds up: " + std::to_string(h.sb) + "/" + std::to_string(h.bb) + (h.ante ? " (ante " + std::to_string(h.ante) + ")" : "");
   if (!msg.empty()) {
     Vector2 m = g.measure(msg, 15, true);
-    g.text(msg, cx - m.x / 2 + 1, by + bh + 45, 15, Color{0, 0, 0, 160}, true);
-    g.text(msg, cx - m.x / 2, by + bh + 44, 15, Color{255, 244, 214, 255}, true);
+    if (finishedShown) {  // ribbon banner with a trophy
+      float k = static_cast<float>(std::clamp((now - winAnimStart_) / 0.35, 0.0, 1.0));
+      float bwid = (m.x + 60) * (0.6f + 0.4f * k);
+      Rectangle rb{cx - bwid / 2, by + bh + 38, bwid, 32};
+      DrawTriangle({rb.x + 6, rb.y + 4}, {rb.x - 14, rb.y + 20}, {rb.x + 6, rb.y + rb.height + 4}, Color{120, 84, 22, static_cast<unsigned char>(255 * k)});
+      DrawTriangle({rb.x + rb.width - 6, rb.y + 4}, {rb.x + rb.width - 6, rb.y + rb.height + 4}, {rb.x + rb.width + 14, rb.y + 20}, Color{120, 84, 22, static_cast<unsigned char>(255 * k)});
+      DrawRectangleRounded({rb.x, rb.y + 2, rb.width, rb.height}, 0.3f, 6, Color{0, 0, 0, 90});
+      DrawRectangleGradientV(static_cast<int>(rb.x), static_cast<int>(rb.y), static_cast<int>(rb.width), static_cast<int>(rb.height), Color{236, 190, 92, 255}, Color{184, 132, 44, 255});
+      DrawRectangleLinesEx(rb, 1, Color{255, 226, 150, 255});
+      g.icon(Gui::IconTrophy, {rb.x + 20, rb.y + rb.height / 2}, 18, Color{70, 46, 8, 255});
+      if (k > 0.6f) g.text(msg, rb.x + 36, rb.y + rb.height / 2 - m.y / 2, 15, Color{48, 30, 4, 255}, true);
+    } else {
+      g.text(msg, cx - m.x / 2 + 1, by + bh + 45, 15, Color{0, 0, 0, 160}, true);
+      g.text(msg, cx - m.x / 2, by + bh + 44, 15, Color{255, 244, 214, 255}, true);
+    }
   }
   if (c.paused()) {
     Rectangle pr{cx - 60, by - 44, 120, 28};

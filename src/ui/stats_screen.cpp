@@ -250,7 +250,10 @@ void StatsScreen::draw(App& app, Rectangle area) {
   for (size_t i = 0; i < tiles.size(); ++i) {
     Rectangle r{area.x + i * (tw + gap), y, tw, 70};
     g.panel(r);
-    g.text(g.ellipsize(tiles[i].label, tw - 20, 12.5f), r.x + 12, r.y + 12, 12.5f, theme::muted);
+    static const Gui::Icon tileIcons[] = {Gui::IconPlay, Gui::IconChip, Gui::IconStats, Gui::IconTrophy, Gui::IconReview, Gui::IconDrills, Gui::IconLearn};
+    DrawRectangleRounded({r.x + 1, r.y + 10, 3, r.height - 20}, 1, 4, tiles[i].c.r == theme::text.r && tiles[i].c.g == theme::text.g ? theme::accent : tiles[i].c);
+    if (tw > 130) g.icon(tileIcons[i % 7], {r.x + r.width - 20, r.y + 20}, 16, withAlpha(theme::text2, 0.35f));
+    g.text(g.ellipsize(tiles[i].label, tw - 20 - (tw > 130 ? 26 : 0), 12.5f), r.x + 12, r.y + 12, 12.5f, theme::muted);
     g.text(g.ellipsize(tiles[i].value, tw - 20, 19, true), r.x + 12, r.y + 34, 19, tiles[i].c, true);
     if (g.hover(r)) g.setTooltip(tiles[i].tip);
   }

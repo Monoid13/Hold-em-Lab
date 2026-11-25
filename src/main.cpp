@@ -63,6 +63,9 @@ int main(int argc, char** argv) {
   SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
 #endif
   SetTraceLogLevel(LOG_WARNING);
+#if defined(__ANDROID__)
+  width = height = 0;  // 0x0 = use the whole display (any other size is letterboxed with black bars)
+#endif
   InitWindow(width, height, "Hold'em Lab");
   SetWindowMinSize(1000, 680);
   SetExitKey(KEY_NULL);

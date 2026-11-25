@@ -93,6 +93,9 @@ struct Gui {
   void cardSlot(Rectangle r) const;
   void chip(Vector2 center, float radius) const;
   void chipStack(Vector2 base, int amount, int bb, float radius = 9) const;
+  enum Icon { IconPlay, IconLearn, IconReview, IconStats, IconDrills, IconRanges, IconSettings, IconChip, IconTrophy };
+  void icon(Icon kind, Vector2 center, float size, Color c) const;
+  void backdrop(Rectangle r) const;  // app background: gradient, glow and a faint pattern
   void gradeBadge(float x, float y, int grade, float size = 14) const;  // returns nothing; draws symbol + label
   float gradeBadgeWidth(int grade, float size = 14) const;
   Color suitColor(int suit) const;

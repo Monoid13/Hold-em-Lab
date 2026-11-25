@@ -31,6 +31,11 @@ class PlayScreen {
   size_t lastLogSize_ = 0;
   int animHand_ = -1;
   std::map<std::string, double> cardSeen_;  // card key -> time it started being dealt
+  struct Floater { std::string text; double start; };
+  std::map<int, std::string> lastFlash_;   // seat -> flash text already seen
+  std::map<int, Floater> floaters_;        // seat -> rising action text
+  int winAnimHand_ = -1;
+  double winAnimStart_ = 0;
   void drawTable(App& app, Rectangle r);
   void drawStatus(App& app, Rectangle r);
   float drawBeginnerPanel(App& app, Rectangle r);

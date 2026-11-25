@@ -53,7 +53,8 @@ Get the latest version from the **[Releases page](https://github.com/Monoid13/Ho
 - **Android:** open the Releases page on your phone and tap `HoldemLab-android.apk`, then open
   the downloaded file. Android asks you to allow installing apps from your browser (**Settings >
   Install unknown apps**). If Play Protect warns about an unknown app, choose **Install anyway**.
-  The game plays in landscape; tap to press buttons and drag to scroll.
+  The game plays in landscape and fills the whole screen (the status and navigation bars hide;
+  swipe from the edge to show them briefly). Tap to press buttons and drag to scroll.
 
 **New to poker?** Choose **I'm new to poker** when the app first starts. It turns on beginner
 help and gives you a short tour. The **Learn** tab explains the rules, hand rankings and poker
@@ -202,7 +203,7 @@ src/coach/   spot analysis and decision grading
 src/train/   drill generators and graders
 src/app/     game controller, JSON persistence, settings, progress, hand history
 src/ui/      raylib GUI: widgets, screens, welcome tour and Learn tab (scales for phones and tablets)
-android/     Gradle project that packages the same code as an Android app (NativeActivity)
+android/     Gradle project that packages the same code as an Android app (full-screen NativeActivity)
 tests/       dependency-free test runner
 tools/       headless bot simulator
 assets/      DejaVu fonts and the app icon (embedded at build time; see assets/fonts/LICENSE)

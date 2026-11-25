@@ -268,6 +268,7 @@ bool Gui::button(Rectangle r, const std::string& label, Btn style, bool enabled,
   }
   if (h && down) r.y += 1;
   DrawRectangleRounded(r, round, 8, fill);
+  if (style != Btn::Ghost) DrawRectangleRounded({r.x + 1, r.y + 1, r.width - 2, r.height * 0.5f}, round, 8, Color{255, 255, 255, static_cast<unsigned char>(enabled ? 14 : 6)});
   DrawRectangleRoundedLinesEx(r, round, 8, 1, line);
   textCentered(stripKeyHint(label), r, size, ink, true);
   return h && released;
@@ -378,7 +379,10 @@ bool Gui::textField(int id, Rectangle r, std::string& value, int maxLen) {
 }
 
 void Gui::panel(Rectangle r, const std::string& title, const std::string& subtitle) {
+  float rnd = std::min(0.5f, 20.f / std::max(1.f, std::min(r.width, r.height)));
+  DrawRectangleRounded({r.x, r.y + 3, r.width, r.height}, rnd, 8, Color{0, 0, 0, 70});  // soft drop shadow
   DrawRectangleRounded(r, std::min(0.5f, 20.f / std::max(1.f, std::min(r.width, r.height))), 8, theme::surface);
+  DrawRectangleRounded({r.x + 1, r.y + 1, r.width - 2, std::min(40.f, r.height - 2)}, rnd, 8, Color{255, 255, 255, 6});  // top sheen
   DrawRectangleRoundedLinesEx(r, std::min(0.5f, 20.f / std::max(1.f, std::min(r.width, r.height))), 8, 1, theme::border);
   if (!title.empty()) {
     text(title, r.x + 14, r.y + 12, 16, theme::text, true);
@@ -421,9 +425,15 @@ void Gui::card(Card c, Rectangle r, bool faceDown, bool highlight, bool dim) con
     float rw = measure(rk, rs, true).x;
     Vector2 cm = measure(suitSymbol(suit), cs);
     text(suitSymbol(suit), rx + (rw - cm.x) / 2, ry + rs * 0.95f, cs, col);
-    float bs = r.width * 0.62f;
+    float bs = r.width * 0.5f;
     Vector2 bm = measure(suitSymbol(suit), bs);
-    text(suitSymbol(suit), r.x + r.width * 0.58f - bm.x / 2, r.y + r.height * 0.6f - bm.y / 2, bs, col);
+    text(suitSymbol(suit), r.x + r.width * 0.5f - bm.x / 2, r.y + r.height * 0.53f - bm.y / 2, bs, col);
+    // the same index upside-down in the bottom-right corner, like a real card
+    const Font& fb = rs > 26 ? boldLarge : bold;
+    const Font& fr = cs > 26 ? regLarge : reg;
+    Vector2 br{r.x + r.width - r.width * 0.08f, r.y + r.height - r.height * 0.03f};
+    DrawTextPro(fb, rk.c_str(), {br.x, br.y}, {0, 0}, 180, rs, 0, col);
+    DrawTextPro(fr, suitSymbol(suit), {br.x - (rw - cm.x) / 2, br.y - rs * 0.95f}, {0, 0}, 180, cs, 0, col);
   } else {
     float rs = r.width * 0.42f;
     text(rk, r.x + r.width * 0.09f, r.y + r.height * 0.04f, rs, col, true);
@@ -461,6 +471,71 @@ void Gui::chipStack(Vector2 base, int amount, int bb, float rad) const {
       DrawEllipse(static_cast<int>(base.x + std::cos(a) * rad * 0.78f), static_cast<int>(y - 1.5f + std::sin(a) * rad * 0.39f), rad * 0.16f, rad * 0.09f, Color{255, 255, 255, 200});
     }
   }
+}
+
+void Gui::icon(Icon kind, Vector2 c, float sz, Color col) const {
+  float h = sz / 2;
+  switch (kind) {
+    case IconPlay: {  // two fanned cards
+      Rectangle a{c.x - h * 0.75f, c.y - h * 0.8f, h * 0.95f, h * 1.35f};
+      DrawRectanglePro({a.x + a.width / 2, a.y + a.height / 2, a.width, a.height}, {a.width / 2, a.height / 2}, -12, col);
+      DrawRectanglePro({c.x + h * 0.25f, c.y, a.width, a.height}, {a.width / 2, a.height / 2}, 12, theme::surface);
+      DrawRectanglePro({c.x + h * 0.25f, c.y, a.width - 3, a.height - 3}, {(a.width - 3) / 2, (a.height - 3) / 2}, 12, col);
+      break;
+    }
+    case IconLearn:  // open book
+      DrawTriangle({c.x, c.y + h * 0.8f}, {c.x, c.y - h * 0.55f}, {c.x - h, c.y - h * 0.75f}, col);
+      DrawTriangle({c.x, c.y + h * 0.8f}, {c.x - h, c.y - h * 0.75f}, {c.x - h, c.y + h * 0.6f}, col);
+      DrawTriangle({c.x, c.y + h * 0.8f}, {c.x + h, c.y - h * 0.75f}, {c.x, c.y - h * 0.55f}, col);
+      DrawTriangle({c.x, c.y + h * 0.8f}, {c.x + h, c.y + h * 0.6f}, {c.x + h, c.y - h * 0.75f}, col);
+      DrawLineEx({c.x, c.y - h * 0.55f}, {c.x, c.y + h * 0.8f}, 1.5f, theme::surface);
+      break;
+    case IconReview:  // circular arrow
+      DrawRing(c, h * 0.55f, h * 0.8f, 40, 330, 24, col);
+      DrawTriangle({c.x + h * 0.95f, c.y - h * 0.15f}, {c.x + h * 0.4f, c.y - h * 0.15f}, {c.x + h * 0.7f, c.y + h * 0.3f}, col);
+      break;
+    case IconStats:
+      for (int i = 0; i < 3; ++i) {
+        float bh = h * (0.7f + 0.45f * i);
+        DrawRectangleRounded({c.x - h + i * h * 0.72f, c.y + h - bh, h * 0.52f, bh}, 0.3f, 4, col);
+      }
+      break;
+    case IconDrills:  // target
+      DrawRing(c, h * 0.72f, h * 0.95f, 0, 360, 28, col);
+      DrawRing(c, h * 0.32f, h * 0.52f, 0, 360, 24, col);
+      DrawCircleV(c, h * 0.14f, col);
+      break;
+    case IconRanges:  // 3x3 grid
+      for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) DrawRectangleRounded({c.x - h + i * h * 0.7f, c.y - h + j * h * 0.7f, h * 0.56f, h * 0.56f}, 0.3f, 4, (i + j) % 2 ? withAlpha(col, 0.5f) : col);
+      break;
+    case IconSettings:  // gear
+      for (int i = 0; i < 8; ++i) DrawRectanglePro({c.x, c.y, h * 0.36f, h * 1.9f}, {h * 0.18f, h * 0.95f}, i * 22.5f, col);
+      DrawCircleV(c, h * 0.72f, col);
+      DrawCircleV(c, h * 0.3f, theme::surface);
+      break;
+    case IconChip:
+      DrawCircleV(c, h, col);
+      DrawRing(c, h * 0.55f, h * 0.72f, 0, 360, 20, Color{255, 255, 255, static_cast<unsigned char>(col.a * 0.6f)});
+      DrawCircleV(c, h * 0.3f, Color{255, 255, 255, static_cast<unsigned char>(col.a * 0.7f)});
+      break;
+    case IconTrophy:
+      DrawRectangleRounded({c.x - h * 0.6f, c.y - h * 0.8f, h * 1.2f, h * 0.9f}, 0.5f, 6, col);
+      DrawRing({c.x - h * 0.6f, c.y - h * 0.45f}, h * 0.2f, h * 0.34f, 90, 270, 12, col);
+      DrawRing({c.x + h * 0.6f, c.y - h * 0.45f}, h * 0.2f, h * 0.34f, -90, 90, 12, col);
+      DrawRectangle(static_cast<int>(c.x - h * 0.12f), static_cast<int>(c.y + h * 0.1f), static_cast<int>(h * 0.24f), static_cast<int>(h * 0.45f), col);
+      DrawRectangleRounded({c.x - h * 0.5f, c.y + h * 0.55f, h, h * 0.3f}, 0.4f, 4, col);
+      break;
+  }
+}
+
+void Gui::backdrop(Rectangle r) const {
+  DrawRectangleGradientV(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width), static_cast<int>(r.height), Color{16, 24, 20, 255}, Color{9, 12, 11, 255});
+  // faint diamond pattern, like a card-room carpet
+  const float step = 46;
+  for (float y = r.y; y < r.y + r.height + step; y += step)
+    for (float x = r.x + (static_cast<int>((y - r.y) / step) % 2 ? step / 2 : 0); x < r.x + r.width + step; x += step)
+      DrawPoly({x, y}, 4, 7, 0, Color{255, 255, 255, 5});
 }
 
 static Color gradeColor(int g) {

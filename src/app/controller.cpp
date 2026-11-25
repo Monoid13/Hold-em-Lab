@@ -170,7 +170,10 @@ void GameController::next() {
   st.awaitingHero = false;
   Decision d = decideBot(*table, seat, profile(bot.profileKey), &bot.memory, *tracker, rng_);
   int handId = table->hand.id;
-  schedule(gap(d.thinkMs), [this, handId, seat, d] { applyBot(handId, seat, d); });
+  double delay = gap(d.thinkMs);
+  st.thinkFrom = now_;
+  st.thinkUntil = now_ + delay;
+  schedule(delay, [this, handId, seat, d] { applyBot(handId, seat, d); });
 }
 
 void GameController::applyBot(int handId, int seat, const Decision& d) {
