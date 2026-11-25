@@ -22,7 +22,7 @@ void App::startNewGame() {
 
 void App::drawTopBar(float h) {
   float W = screenW();
-  DrawRectangle(0, 0, W, static_cast<int>(h), theme::surface);
+  DrawRectangleGradientV(0, 0, static_cast<int>(W), static_cast<int>(h), Color{27, 34, 30, 255}, theme::surface);
   DrawLine(0, static_cast<int>(h), W, static_cast<int>(h), theme::border);
   g.text("\xE2\x99\xA0", 18, h / 2 - 13, 24, theme::accent, true);
   g.text("Hold'em Lab", 42, h / 2 - 11, 20, theme::text, true);
@@ -34,6 +34,7 @@ void App::drawTopBar(float h) {
     bool on = static_cast<int>(tab) == i;
     bool hv = g.hover(r);
     if (on || hv) DrawRectangleRounded(r, 0.35f, 8, on ? theme::surface3 : theme::surface2);
+    if (on) DrawRectangleRounded({r.x + 10, h - 4, r.width - 20, 3}, 1, 4, theme::accent);
     g.textCentered(tabs[i], r, 15, on ? theme::text : theme::text2, on);
     if (hv && g.released) {
       tab = static_cast<Tab>(i);

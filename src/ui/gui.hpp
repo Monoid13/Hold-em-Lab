@@ -92,6 +92,7 @@ struct Gui {
   void card(Card c, Rectangle r, bool faceDown = false, bool highlight = false, bool dim = false) const;
   void cardSlot(Rectangle r) const;
   void chip(Vector2 center, float radius) const;
+  void chipStack(Vector2 base, int amount, int bb, float radius = 9) const;
   void gradeBadge(float x, float y, int grade, float size = 14) const;  // returns nothing; draws symbol + label
   float gradeBadgeWidth(int grade, float size = 14) const;
   Color suitColor(int suit) const;

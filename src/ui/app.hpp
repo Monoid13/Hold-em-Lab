@@ -1,6 +1,9 @@
 #pragma once
 // Application shell: owns the game state and the screens.
 
+#include <chrono>
+#include <array>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -26,6 +29,8 @@ class PlayScreen {
   Scroll sideScroll_;
   Scroll logScroll_;
   size_t lastLogSize_ = 0;
+  int animHand_ = -1;
+  std::map<std::string, double> cardSeen_;  // card key -> time it started being dealt
   void drawTable(App& app, Rectangle r);
   void drawStatus(App& app, Rectangle r);
   float drawBeginnerPanel(App& app, Rectangle r);
@@ -53,6 +58,8 @@ class StatsScreen {
 
  private:
   Scroll scroll_;
+  int period_ = 0;  // 0 all time, 1 last 100 hands, 2 this session
+  long long sessionStartMs_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 };
 
 class DrillsScreen {
@@ -80,23 +87,39 @@ class DrillsScreen {
 
 float drawRankingsList(Gui& g, float x, float y, float width, float cardW);
 
+struct Block;
 class LearnScreen {
  public:
   void draw(App& app, Rectangle area);
+  void open(int section) { section_ = section; }
 
  private:
   int section_ = 0;
-  Scroll scroll_;
+  Scroll scroll_, navScroll_;
+  float drawBlock(App& app, const Block& b, float x, float y, float W);
 };
 
 class RangesScreen {
  public:
   void draw(App& app, Rectangle area);
+  void debugSet(int mode, int selected) {
+    mode_ = mode;
+    selected_ = selected;
+  }
 
  private:
+  using Mix = std::array<std::array<double, 3>, 169>;  // raise, call, fold per hand class
+  struct HandEq {
+    double vsRandom = 0, vsTop10 = 0;
+  };
+  int mode_ = 0;  // 0 opening, 1 facing a raise, 2 ranking
   int pos_ = 5;
-  bool rankMode_ = false;
+  int heroPos_ = 2, openerPos_ = 1;
   int selected_ = -1;
+  std::map<std::string, Mix> mixCache_;
+  std::map<int, HandEq> eqCache_;
+  const Mix& facingMix(const std::string& hero, const std::string& opener);
+  const HandEq& handEquity(int cls);
 };
 
 class SettingsScreen {
@@ -132,6 +155,8 @@ class App {
   int welcomePage = 0;
   double toastUntil = 0;
   DrillsScreen& drills() { return drills_; }
+  LearnScreen& learn() { return learn_; }
+  RangesScreen& ranges() { return ranges_; }
   void showToast(const std::string& t) {
     toast = t;
     toastUntil = GetTime() + 2.5;

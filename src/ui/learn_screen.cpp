@@ -3,6 +3,7 @@
 
 #include "core/evaluator.hpp"
 #include "ui/app.hpp"
+#include "ui/course.hpp"
 
 namespace hl::ui {
 
@@ -29,17 +30,6 @@ struct Section {
   const char* title;
   const char* body;
 };
-const Section HOW_TO_PLAY[] = {
-    {"The goal", "Win chips. You win the pot (all the chips bet in a hand) by having the best five-card hand at the end, or by betting so that everyone else gives up (folds)."},
-    {"Your cards", "Each player gets 2 private cards that only they can see. Up to 5 shared cards are then dealt face up in the middle. Your hand is the best 5 cards you can make from your 2 cards plus the 5 shared cards - you can use both, one or none of your own."},
-    {"Blinds and the button", "Before the cards are dealt, the two players to the left of the dealer button (the white D) put in forced bets: the small blind and the big blind. This gives everyone something to play for. The button moves one seat to the left every hand, so everyone takes turns paying the blinds."},
-    {"Four betting rounds", "Pre-flop: after the private cards. Flop: 3 shared cards are dealt. Turn: a 4th shared card. River: the 5th and final shared card. In each round players act one at a time, going around the table to the left."},
-    {"Your options", "Fold: give up the hand. Check: pass without betting (only if nobody has bet). Call: put in the same amount as the current bet. Bet: put chips in first. Raise: bet more than the current bet. All-in: bet every chip you have."},
-    {"Showdown", "If two or more players are still in after the river, they show their cards. The best five-card hand wins the pot; equal hands split it. If everyone else folds earlier, the last player left wins without showing."},
-    {"Position matters", "Players who act later in a round see what everyone else did first. That is an advantage, so you can play more hands from late seats (like the button) and should be pickier in early seats."},
-    {"How this app helps", "In beginner mode the side panel tells you what you have, how strong it is, and suggests a move with reasons. After every decision the coach says how good it was. The Review tab replays hands, Drills train single skills, and Ranges shows which starting hands to play from each seat."},
-};
-
 const Section GLOSSARY[] = {
     {"Pot", "All the chips bet so far in the current hand. The winner takes it."},
     {"Blinds", "Forced bets posted before the cards are dealt: the small blind (SB) and big blind (BB)."},
@@ -76,7 +66,6 @@ const char* TIPS[] = {
     "Take your time: in beginner mode the coach suggests a move and explains why before you act.",
 };
 
-const char* SECTION_NAMES[] = {"How to play", "Hand rankings", "Words to know", "Beginner tips"};
 }  // namespace
 
 float drawRankingsList(Gui& g, float x, float y, float width, float cardW) {
@@ -95,47 +84,210 @@ float drawRankingsList(Gui& g, float x, float y, float width, float cardW) {
   return y - y0;
 }
 
+float LearnScreen::drawBlock(App& app, const Block& b, float x, float y, float W) {
+  Gui& g = app.g;
+  float y0 = y;
+  switch (b.type) {
+    case Block::Heading:
+      y += 6;
+      g.text(b.a, x, y, 19, theme::accent, true);
+      y += 32;
+      break;
+    case Block::Para:
+      y += g.textWrapped(b.a, x, y, W, 15, theme::text2, false, 1.4f) + 12;
+      break;
+    case Block::Bullets: {
+      size_t pos = 0;
+      std::string text = b.b;
+      while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
+        std::string line = text.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        DrawCircleV({x + 6, y + 9}, 3, theme::accent);
+        y += g.textWrapped(line, x + 20, y, W - 20, 15, theme::text2, false, 1.4f) + 8;
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+      }
+      y += 6;
+      break;
+    }
+    case Block::Cards: {
+      float cw = 46, ch = cw * 1.4f, gx = x;
+      size_t pos = 0;
+      std::string spec = b.a;
+      float rowTop = y;
+      while (pos <= spec.size()) {
+        size_t bar = spec.find('|', pos);
+        std::string grp = spec.substr(pos, bar == std::string::npos ? std::string::npos : bar - pos);
+        size_t colon = grp.find(':');
+        std::string label = colon == std::string::npos ? "" : grp.substr(0, colon);
+        std::string cards = colon == std::string::npos ? grp : grp.substr(colon + 1);
+        std::vector<std::string> toks;
+        std::string tok;
+        for (char ch2 : cards) {
+          if (ch2 == ' ') {
+            if (!tok.empty()) toks.push_back(tok);
+            tok.clear();
+          } else
+            tok += ch2;
+        }
+        if (!tok.empty()) toks.push_back(tok);
+        float gw = std::max(g.measure(label, 12.5f, true).x, toks.size() * (cw + 4.f));
+        if (gx > x && gx + gw > x + W) {
+          gx = x;
+          rowTop += ch + 34;
+        }
+        g.text(label, gx, rowTop, 12.5f, theme::muted, true);
+        for (size_t k = 0; k < toks.size(); ++k) {
+          Rectangle cr{gx + k * (cw + 4), rowTop + 20, cw, ch};
+          if (toks[k] == "?") g.card(0, cr, true);
+          else g.card(parseCard(toks[k]), cr);
+        }
+        gx += gw + 26;
+        if (bar == std::string::npos) break;
+        pos = bar + 1;
+      }
+      y = rowTop + 20 + ch + 18;
+      break;
+    }
+    case Block::Tip:
+    case Block::Example: {
+      bool tip = b.type == Block::Tip;
+      float bodyH = g.wrappedHeight(b.b, W - 40, 14.5f, false, 1.4f);
+      float h = 46 + bodyH + 12;
+      Rectangle r{x, y, W, h};
+      DrawRectangleRounded(r, 0.08f, 8, tip ? Color{45, 40, 22, 255} : theme::surface2);
+      if (tip) DrawRectangleRounded({x, y, 5, h}, 1, 4, theme::accent);
+      else DrawRectangleRoundedLinesEx(r, 0.08f, 8, 1, theme::border);
+      g.text(std::string(tip ? "\xE2\x98\x85 " : "") + b.a, x + 20, y + 14, 15.5f, tip ? theme::accent : theme::text, true);
+      g.textWrapped(b.b, x + 20, y + 42, W - 40, 14.5f, theme::text2, false, 1.4f);
+      y += h + 14;
+      break;
+    }
+    case Block::Rows: {
+      float lw = std::min(260.f, W * 0.34f);
+      size_t pos = 0;
+      std::string text = b.b;
+      bool odd = false;
+      while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
+        std::string line = text.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        size_t bar = line.find('|');
+        std::string left = line.substr(0, bar), right = bar == std::string::npos ? "" : line.substr(bar + 1);
+        float rh = std::max(g.wrappedHeight(left, lw - 20, 14.5f, true), g.wrappedHeight(right, W - lw - 24, 14.5f, false, 1.35f)) + 16;
+        if (odd) DrawRectangleRec({x, y, W, rh}, Color{255, 255, 255, 8});
+        g.textWrapped(left, x + 12, y + 8, lw - 20, 14.5f, theme::text, true);
+        g.textWrapped(right, x + lw, y + 8, W - lw - 24, 14.5f, theme::text2, false, 1.35f);
+        DrawLineEx({x, y + rh}, {x + W, y + rh}, 1, theme::grid);
+        y += rh;
+        odd = !odd;
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+      }
+      y += 16;
+      break;
+    }
+    case Block::Rankings:
+      y += drawRankingsList(g, x, y, W, 42) + 6;
+      break;
+    case Block::Drill: {
+      int k = std::atoi(b.a.c_str());
+      float w = g.measure(b.b, 14, true).x + 60;
+      if (g.button({x, y, w, 38}, "\xE2\x96\xB6  " + b.b, Btn::Primary, true, 14)) {
+        app.tab = Tab::Drills;
+        app.drills().open(k);
+      }
+      y += 52;
+      break;
+    }
+  }
+  return y - y0;
+}
+
 void LearnScreen::draw(App& app, Rectangle area) {
   Gui& g = app.g;
-  float x = area.x;
-  for (int i = 0; i < 4; ++i) {
-    float w = g.measure(SECTION_NAMES[i], 13.5f, true).x + 26;
-    if (g.button({x, area.y, w, 32}, SECTION_NAMES[i], section_ == i ? Btn::ChipOn : Btn::Chip, true, 13.5f)) {
+  const auto& chapters = course();
+  const int nCh = static_cast<int>(chapters.size());
+  const int total = nCh + 2;  // + glossary + tips
+  section_ = std::clamp(section_, 0, total - 1);
+
+  // ---- chapter list ----
+  float navW = std::min(300.f, area.width * 0.27f);
+  Rectangle nav{area.x, area.y, navW, area.height};
+  g.panel(nav);
+  int done = 0;
+  for (auto& ch : chapters) done += app.progress.learnRead.count(ch.key) ? 1 : 0;
+  g.text("Poker course", nav.x + 16, nav.y + 14, 17, theme::text, true);
+  g.text(std::to_string(done) + " of " + std::to_string(nCh) + " chapters read", nav.x + 16, nav.y + 38, 12.5f, theme::muted);
+  Rectangle bar{nav.x + 16, nav.y + 58, navW - 32, 6};
+  DrawRectangleRounded(bar, 1, 6, theme::surface3);
+  DrawRectangleRounded({bar.x, bar.y, bar.width * done / std::max(1, nCh), bar.height}, 1, 6, theme::accent);
+  Rectangle list{nav.x + 6, nav.y + 76, navW - 12, nav.height - 84};
+  float ly0 = navScroll_.begin(g, list);
+  float ly = ly0;
+  for (int i = 0; i < total; ++i) {
+    std::string title = i < nCh ? chapters[i].title : i == nCh ? "Glossary" : "Beginner tips";
+    bool read = i < nCh && app.progress.learnRead.count(chapters[i].key);
+    Rectangle row{list.x, ly, list.width - 8, 36};
+    bool on = i == section_;
+    if (on || g.hover(row)) DrawRectangleRounded(row, 0.25f, 6, on ? theme::surface3 : theme::surface2);
+    if (on) DrawRectangleRounded({row.x, row.y + 6, 3, row.height - 12}, 1, 4, theme::accent);
+    if (i == nCh) DrawLineEx({row.x + 8, row.y - 3}, {row.x + row.width - 8, row.y - 3}, 1, theme::border);
+    g.text(g.ellipsize(title, row.width - 46, 13.5f, on), row.x + 12, row.y + 10, 13.5f, on ? theme::text : theme::text2, on);
+    if (read) g.textRight("\xE2\x9C\x93", row.x + row.width - 10, row.y + 9, 15, theme::gain, true);
+    if (g.clicked(row)) {
       section_ = i;
       scroll_.toTop();
     }
-    x += w + 8;
+    ly += 40;
   }
-  Rectangle body{area.x, area.y + 46, area.width, area.height - 46};
-  float W = std::min(900.f, body.width - 14);
+  navScroll_.end(g, ly - ly0);
+
+  // ---- content ----
+  Rectangle body{area.x + navW + 16, area.y, area.width - navW - 16, area.height};
+  float W = std::min(860.f, body.width - 30);
+  float x = body.x + std::max(0.f, (body.width - 14 - W) / 2);
   float y0 = scroll_.begin(g, body);
-  float y = y0;
-  if (section_ == 0) {
-    for (auto& s : HOW_TO_PLAY) {
-      g.text(s.title, body.x, y, 18, theme::accent, true);
-      y += 28;
-      y += g.textWrapped(s.body, body.x, y, W, 15, theme::text2) + 18;
-    }
-    if (g.button({body.x, y, 220, 38}, "See the hand rankings", Btn::Primary, true, 14)) {
-      section_ = 1;
+  float y = y0 + 4;
+  if (section_ < nCh) {
+    const Chapter& ch = chapters[section_];
+    g.text(ch.title, x, y, 26, theme::text, true);
+    y += 40;
+    y += g.textWrapped(ch.summary, x, y, W, 15, theme::muted) + 18;
+    DrawLineEx({x, y}, {x + W, y}, 1, theme::border);
+    y += 18;
+    for (const Block& b : ch.blocks) y += drawBlock(app, b, x, y, W);
+    y += 16;
+    if (section_ > 0 && g.button({x, y, 150, 40}, "\xE2\x97\x80  Previous", Btn::Ghost, true, 14)) {
+      --section_;
       scroll_.toTop();
     }
-    y += 50;
-  } else if (section_ == 1) {
-    y += g.textWrapped("From best to worst. Your hand is always the best 5 cards from your 2 private cards plus the 5 shared cards. Suits never rank above each other.", body.x, y, W, 14.5f, theme::text2) + 16;
-    y += drawRankingsList(g, body.x, y, W, 44) + 10;
-  } else if (section_ == 2) {
-    for (auto& s : GLOSSARY) {
-      g.text(s.title, body.x, y, 15, theme::text, true);
+    std::string nextLabel = section_ + 1 < nCh ? "Mark as read & next  \xE2\x96\xB6" : "Mark as read  \xE2\x9C\x93";
+    float nw = g.measure(nextLabel, 14, true).x + 40;
+    if (g.button({x + W - nw, y, nw, 40}, nextLabel, Btn::Primary, true, 14)) {
+      app.progress.learnRead.insert(ch.key);
+      app.progress.save();
+      if (section_ + 1 < nCh) {
+        ++section_;
+        scroll_.toTop();
+      } else
+        app.showToast("Course complete - well done!");
+    }
+    y += 60;
+  } else if (section_ == nCh) {
+    g.text("Glossary", x, y, 26, theme::text, true);
+    y += 44;
+    for (auto& s2 : GLOSSARY) {
+      g.text(s2.title, x, y, 15, theme::text, true);
       y += 22;
-      y += g.textWrapped(s.body, body.x + 16, y, W - 16, 14, theme::text2) + 12;
+      y += g.textWrapped(s2.body, x + 16, y, W - 16, 14.5f, theme::text2, false, 1.35f) + 12;
     }
   } else {
+    g.text("Beginner tips", x, y, 26, theme::text, true);
+    y += 44;
     int n = 1;
     for (const char* t : TIPS) {
-      std::string num = std::to_string(n++) + ".";
-      g.text(num, body.x, y, 16, theme::accent, true);
-      y += g.textWrapped(t, body.x + 30, y, W - 30, 15, theme::text2) + 14;
+      g.text(std::to_string(n++) + ".", x, y, 16, theme::accent, true);
+      y += g.textWrapped(t, x + 30, y, W - 30, 15, theme::text2, false, 1.4f) + 14;
     }
   }
   scroll_.end(g, y - y0 + 20);

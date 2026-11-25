@@ -64,6 +64,33 @@ void ReviewScreen::draw(App& app, Rectangle area) {
     }
     fx += w + 6;
   }
+  {  // totals for the hands in the current filter
+    double net = 0;
+    int won = 0, sd = 0, graded = 0, errors = 0;
+    for (auto* h : list) {
+      double n = static_cast<double>(h->heroNet()) / h->bb;
+      net += n;
+      won += n > 0;
+      sd += !h->uncontested;
+      for (auto& d : h->decisions) {
+        ++graded;
+        errors += static_cast<int>(d.grade) >= 2;
+      }
+    }
+    float sy = fy + 34;
+    Rectangle box{lp.x + 10, sy, lp.width - 20, 58};
+    DrawRectangleRounded(box, 0.2f, 6, theme::surface2);
+    float cw = box.width / 3;
+    auto cell = [&](int i, const std::string& v, const std::string& l, Color c) {
+      g.textCentered(v, {box.x + i * cw, box.y + 6, cw, 24}, 16, c, true);
+      g.textCentered(l, {box.x + i * cw, box.y + 32, cw, 18}, 11.5f, theme::muted);
+    };
+    cell(0, std::to_string(list.size()), "hands", theme::text);
+    cell(1, fmtBB(net), "net", net > 0 ? theme::gain : net < 0 ? theme::loss : theme::text);
+    cell(2, graded ? std::to_string(errors) + "/" + std::to_string(graded) : "-", "errors / decisions", theme::text);
+    if (g.hover(box)) g.setTooltip(std::to_string(won) + " hands won, " + std::to_string(sd) + " went to showdown.");
+    fy += 66;
+  }
   Rectangle inner{lp.x + 4, fy + 36, lp.width - 8, lp.y + lp.height - fy - 42};
   float y0 = listScroll_.begin(g, inner);
   float y = y0;
@@ -125,6 +152,120 @@ void ReviewScreen::draw(App& app, Rectangle area) {
     app.settings.save();
   }
   dy += 36;
+  // ---- hand summary ----
+  {
+    const RecPlayer* hero = nullptr;
+    for (auto& p : rec->players)
+      if (p.seat == rec->heroSeat) hero = &p;
+    double net = static_cast<double>(rec->heroNet()) / rec->bb;
+    int finalPot = rec->steps.back().potTotal();
+    Rectangle box{di.x, dy, W, 96};
+    DrawRectangleRounded(box, 0.12f, 8, theme::surface2);
+    DrawRectangleRounded({box.x, box.y, 5, box.height}, 1, 4, net > 0 ? theme::gain : net < 0 ? theme::loss : theme::muted);
+    g.text(net > 0 ? "You won" : net < 0 ? "You lost" : "Break-even", box.x + 20, box.y + 12, 13, theme::muted);
+    g.text(fmtBB(net), box.x + 20, box.y + 32, 26, net > 0 ? theme::gain : net < 0 ? theme::loss : theme::text, true);
+    if (hero) {
+      g.text("Your hand", box.x + 200, box.y + 12, 13, theme::muted);
+      g.card(hero->hole[0], {box.x + 200, box.y + 32, 34, 48});
+      g.card(hero->hole[1], {box.x + 238, box.y + 32, 34, 48});
+      g.text(hero->position, box.x + 282, box.y + 46, 15, theme::text2, true);
+    }
+    float rx = box.x + 360;
+    g.text("Pot " + fmtInt(finalPot) + "  \xC2\xB7  " + (rec->uncontested ? std::string("won without a showdown") : "went to showdown"), rx, box.y + 12, 13, theme::muted);
+    float wy = box.y + 34;
+    for (auto& [seat, amt] : rec->winnings) {
+      std::string nm = seat == rec->heroSeat ? "You" : "";
+      for (auto& p : rec->players)
+        if (p.seat == seat && seat != rec->heroSeat) nm = p.name;
+      auto sdn = rec->showdownNames.find(seat);
+      std::string line = nm + " won " + fmtInt(amt) + (sdn != rec->showdownNames.end() ? " with " + sdn->second : "");
+      g.text(g.ellipsize(line, box.x + box.width - rx - 14, 14.5f, true), rx, wy, 14.5f, theme::text, true);
+      wy += 22;
+    }
+    dy += box.height + 12;
+
+    // ---- key moment: the costliest decision ----
+    const RecDecision* key = nullptr;
+    for (auto& d : rec->decisions)
+      if (static_cast<int>(d.grade) >= 2 && (!key || d.evLossBB > key->evLossBB)) key = &d;
+    if (key) {
+      std::string when = key->street == Street::Preflop ? "Before the flop" : "On the " + std::string(streetName(key->street));
+      std::string txt = when + " you chose " + key->heroLabel + "; the coach preferred " + key->bestLabel + ".";
+      float th = g.wrappedHeight(txt, W - 190, 14) + 40;
+      Rectangle kb{di.x, dy, W, th};
+      DrawRectangleRounded(kb, 0.15f, 8, Color{58, 40, 30, 255});
+      DrawRectangleRounded({kb.x, kb.y, 5, kb.height}, 1, 4, theme::serious);
+      g.text("Key moment", kb.x + 20, kb.y + 10, 14, theme::serious, true);
+      if (key->hasEvLoss && key->evLossBB > 0.05) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "-%.1f bb EV", key->evLossBB);
+        g.text(buf, kb.x + 120, kb.y + 11, 13, theme::text2);
+      }
+      g.textWrapped(txt, kb.x + 20, kb.y + 30, W - 190, 14, theme::text);
+      if (g.button({kb.x + kb.width - 150, kb.y + (kb.height - 32) / 2, 136, 32}, "Jump to it", Btn::Normal, true, 13)) step_ = std::max(0, key->step - 1);
+      dy += th + 12;
+    }
+
+    // ---- street-by-street timeline ----
+    g.text("Street by street", di.x, dy, 16, theme::text, true);
+    dy += 28;
+    static const char* names[] = {"Pre-flop", "Flop", "Turn", "River"};
+    for (int st = 0; st < 4; ++st) {
+      std::vector<std::pair<int, std::string>> acts;  // step index, label
+      int potStart = -1;
+      for (size_t i = 1; i < rec->steps.size(); ++i) {
+        const Snapshot& sp = rec->steps[i];
+        if (sp.result || sp.seat < 0) continue;
+        int as = sp.actStreet >= 0 ? sp.actStreet : static_cast<int>(sp.street);
+        if (as != st) continue;
+        if (potStart < 0) potStart = rec->steps[i - 1].potTotal();
+        acts.push_back({static_cast<int>(i), sp.label});
+      }
+      int nb = st == 0 ? 0 : st == 1 ? 3 : st == 2 ? 4 : 5;
+      bool reached = st == 0 || static_cast<int>(rec->board.size()) >= nb;
+      if (!reached) break;
+      float cardsW = nb * 30.f;
+      float lx = di.x + 100 + std::max(cardsW, 60.f) + 16;
+      float aw = di.x + W - lx;
+      // measure wrapped chips
+      float cx = 0, rows = 1;
+      for (auto& a : acts) {
+        float w = g.measure(a.second, 12.5f).x + 16;
+        if (cx > 0 && cx + w > aw) {
+          cx = 0;
+          rows++;
+        }
+        cx += w + 6;
+      }
+      float rh = std::max(52.f, rows * 30 + 14);
+      Rectangle row{di.x, dy, W, rh};
+      DrawRectangleRounded(row, 0.12f, 6, theme::surface2);
+      g.text(names[st], row.x + 12, row.y + 10, 14, theme::accent, true);
+      g.text(potStart >= 0 ? "pot " + fmtInt(potStart) : "", row.x + 12, row.y + 30, 12, theme::muted);
+      for (int k = 0; k < nb; ++k) g.card(rec->board[k], {row.x + 100 + k * 30.f, row.y + 8, 27, 38});
+      cx = 0;
+      float cy = row.y + 10;
+      if (acts.empty()) g.text(st == 0 ? "" : "no betting (all-in or checked through)", lx, cy + 4, 12.5f, theme::muted);
+      for (auto& a : acts) {
+        float w = g.measure(a.second, 12.5f).x + 16;
+        if (cx > 0 && cx + w > aw) {
+          cx = 0;
+          cy += 30;
+        }
+        Rectangle chip{lx + cx, cy, w, 24};
+        bool on = a.first == step_;
+        bool hero = rec->steps[a.first].seat == rec->heroSeat;
+        DrawRectangleRounded(chip, 0.4f, 6, on ? theme::accent : hero ? Color{44, 62, 52, 255} : theme::surface3);
+        g.textCentered(a.second, chip, 12.5f, on ? theme::accentInk : theme::text2);
+        if (g.clicked(chip)) step_ = a.first;
+        cx += w + 6;
+      }
+      dy += rh + 8;
+    }
+    dy += 14;
+    g.text("Replay", di.x, dy, 16, theme::text, true);
+    dy += 28;
+  }
   // board strip
   Rectangle strip{di.x, dy, W, 92};
   DrawRectangleRounded(strip, 0.15f, 8, theme::feltDark);
@@ -181,23 +322,7 @@ void ReviewScreen::draw(App& app, Rectangle area) {
     dy += 40;
   }
   dy += 6;
-  // step chips
-  float sx = di.x;
-  for (size_t i = 0; i < rec->steps.size(); ++i) {
-    std::string lab = g.ellipsize(rec->steps[i].label, 220, 12);
-    float w = g.measure(lab, 12).x + 16;
-    if (sx + w > di.x + W) {
-      sx = di.x;
-      dy += 30;
-    }
-    Rectangle cr{sx, dy, w, 26};
-    bool on = static_cast<int>(i) == step_;
-    DrawRectangleRounded(cr, 0.3f, 6, on ? theme::accent : theme::surface2);
-    g.textCentered(lab, cr, 12, on ? theme::accentInk : theme::text2);
-    if (g.clicked(cr)) step_ = static_cast<int>(i);
-    sx += w + 5;
-  }
-  dy += 44;
+  dy += 14;
   g.text("Coach review", di.x, dy, 17, theme::text, true);
   dy += 30;
   if (rec->decisions.empty()) {

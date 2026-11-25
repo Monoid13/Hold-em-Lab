@@ -213,7 +213,10 @@ void GameController::apply(int seat, Action a) {
   st.flashes[seat] = label;
   std::string name = table->hand.p(seat).name;
   st.log.push_back(name + ": " + label);
-  record_.steps.push_back(snapshot(*table, name + ": " + label, seat));
+  Snapshot snap = snapshot(*table, name + ": " + label, seat);
+  snap.actStreet = streetIndex(prevStreet);
+  snap.added = e.amount;
+  record_.steps.push_back(snap);
   st.thinkingSeat = -1;
   if (!table->hand.finished && table->hand.street != prevStreet) {
     st.flashes.clear();
@@ -294,6 +297,8 @@ void GameController::settle() {
     hs.t = record_.time;
     hs.netBB = static_cast<double>(hero.net) / h.bb;
     hs.position = hero.position;
+    hs.c1 = hero.hole[0];
+    hs.c2 = hero.hole[1];
     for (auto& e : h.log)
       if (e.seat == heroSeat && e.street == Street::Preflop && (e.type == Act::Call || e.type == Act::Raise)) hs.vpip = true;
     if (!res.uncontested)

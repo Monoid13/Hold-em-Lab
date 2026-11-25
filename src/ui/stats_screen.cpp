@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <set>
 
 #include "bots/profiles.hpp"
+#include "core/ranges.hpp"
 #include "train/drills.hpp"
 #include "ui/app.hpp"
 
@@ -73,14 +75,28 @@ double niceStep(double range, double target = 5) {
   return (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
 }
 
-void profitChart(Gui& g, Rectangle r, const std::vector<HandSummary>& hands) {
+// Categorical slots 1-3 of the reference palette (dark-mode steps).
+const Color SERIES_TOTAL{57, 135, 229, 255};     // blue
+const Color SERIES_NOSD{217, 89, 38, 255};       // orange
+const Color SERIES_SD{25, 158, 112, 255};        // aqua
+
+void resultsChart(Gui& g, Rectangle r, const std::vector<const HandSummary*>& hands) {
   if (hands.size() < 2) {
     g.text("Play a few hands to see your graph.", r.x, r.y + 10, 14, theme::muted);
     return;
   }
-  std::vector<double> cum = {0};
-  for (auto& h : hands) cum.push_back(cum.back() + h.netBB);
-  double mn = std::min(0.0, *std::min_element(cum.begin(), cum.end())), mx = std::max(0.0, *std::max_element(cum.begin(), cum.end()));
+  std::vector<double> tot = {0}, sd = {0}, nosd = {0};
+  for (auto* h : hands) {
+    tot.push_back(tot.back() + h->netBB);
+    sd.push_back(sd.back() + (h->showdown ? h->netBB : 0));
+    nosd.push_back(nosd.back() + (h->showdown ? 0 : h->netBB));
+  }
+  double mn = 0, mx = 0;
+  for (auto* v : {&tot, &sd, &nosd})
+    for (double x : *v) {
+      mn = std::min(mn, x);
+      mx = std::max(mx, x);
+    }
   if (mx - mn < 10) {
     mx += 5;
     mn -= 5;
@@ -88,8 +104,21 @@ void profitChart(Gui& g, Rectangle r, const std::vector<HandSummary>& hands) {
   double step = niceStep(mx - mn);
   mn = std::floor(mn / step) * step;
   mx = std::ceil(mx / step) * step;
-  float L = r.x + 52, R = r.x + r.width - 16, T = r.y + 8, B = r.y + r.height - 24;
-  size_t n = cum.size() - 1;
+  // legend (always present for multiple series)
+  struct S {
+    const std::vector<double>* v;
+    Color c;
+    const char* name;
+  } series[] = {{&tot, SERIES_TOTAL, "Total"}, {&sd, SERIES_SD, "At showdown"}, {&nosd, SERIES_NOSD, "Without showdown"}};
+  float lx = r.x + 52;
+  for (auto& se : series) {
+    DrawRectangleRounded({lx, r.y + 4, 16, 4}, 1, 4, se.c);
+    std::string t = std::string(se.name) + "  " + fmtBB(se.v->back());
+    g.text(t, lx + 22, r.y - 2, 12.5f, theme::text2);
+    lx += g.measure(t, 12.5f).x + 48;
+  }
+  float L = r.x + 52, R = r.x + r.width - 16, T = r.y + 24, B = r.y + r.height - 24;
+  size_t n = tot.size() - 1;
   auto X = [&](double i) { return static_cast<float>(L + i / n * (R - L)); };
   auto Y = [&](double v) { return static_cast<float>(T + (mx - v) / (mx - mn) * (B - T)); };
   for (double v = mn; v <= mx + 1e-9; v += step) {
@@ -99,41 +128,70 @@ void profitChart(Gui& g, Rectangle r, const std::vector<HandSummary>& hands) {
   }
   double xs = niceStep(static_cast<double>(n), 6);
   for (double i = xs; i <= n; i += xs) {
-    std::string s = std::to_string(static_cast<long>(i));
-    g.text(s, X(i) - g.measure(s, 12).x / 2, B + 6, 12, theme::muted);
+    std::string t = std::to_string(static_cast<long>(i));
+    g.text(t, X(i) - g.measure(t, 12).x / 2, B + 6, 12, theme::muted);
   }
-  // area wash + line
-  for (size_t i = 1; i <= n; ++i) {
-    Vector2 a{X(i - 1.0), Y(cum[i - 1])}, b{X(static_cast<double>(i)), Y(cum[i])};
+  for (size_t i = 1; i <= n; ++i) {  // wash under the total line only
+    Vector2 a{X(i - 1.0), Y(tot[i - 1])}, b{X(static_cast<double>(i)), Y(tot[i])};
     float z = Y(0);
-    tri(a, {a.x, z}, b, withAlpha(theme::series, 0.1f));
-    tri(b, {a.x, z}, {b.x, z}, withAlpha(theme::series, 0.1f));
+    tri(a, {a.x, z}, b, withAlpha(SERIES_TOTAL, 0.1f));
+    tri(b, {a.x, z}, {b.x, z}, withAlpha(SERIES_TOTAL, 0.1f));
   }
-  for (size_t i = 1; i <= n; ++i) DrawLineEx({X(i - 1.0), Y(cum[i - 1])}, {X(static_cast<double>(i)), Y(cum[i])}, 2, theme::series);
-  Vector2 last{X(static_cast<double>(n)), Y(cum[n])};
-  DrawCircleV(last, 6, theme::surface);
-  DrawCircleV(last, 4, theme::series);
-  std::string lab = fmtBB(cum[n]);
-  g.textRight(lab, std::min(last.x, R - 4), last.y - 22, 13, theme::text, true);
-  // hover crosshair
+  for (int k = 2; k >= 0; --k) {
+    const auto& v = *series[k].v;
+    for (size_t i = 1; i <= n; ++i) DrawLineEx({X(i - 1.0), Y(v[i - 1])}, {X(static_cast<double>(i)), Y(v[i])}, 2, series[k].c);
+    Vector2 last{X(static_cast<double>(n)), Y(v[n])};
+    DrawCircleV(last, 6, theme::surface);
+    DrawCircleV(last, 4, series[k].c);
+  }
   if (g.hover({L, T, R - L, B - T})) {
     size_t i = static_cast<size_t>(std::clamp(std::lround((g.mouse.x - L) / (R - L) * n), 0L, static_cast<long>(n)));
     DrawLineEx({X(static_cast<double>(i)), T}, {X(static_cast<double>(i)), B}, 1, theme::muted);
-    DrawCircleV({X(static_cast<double>(i)), Y(cum[i])}, 6, theme::surface);
-    DrawCircleV({X(static_cast<double>(i)), Y(cum[i])}, 4.5f, theme::series);
-    std::string tip = "Hand " + std::to_string(i) + ": " + fmtBB(cum[i]) + " total" + (i > 0 ? ", " + fmtBB(hands[i - 1].netBB) + " this hand" : "");
-    g.setTooltip(tip);
+    for (auto& se : series) {
+      DrawCircleV({X(static_cast<double>(i)), Y((*se.v)[i])}, 6, theme::surface);
+      DrawCircleV({X(static_cast<double>(i)), Y((*se.v)[i])}, 4.5f, se.c);
+    }
+    g.setTooltip("Hand " + std::to_string(i) + ":  total " + fmtBB(tot[i]) + "  \xC2\xB7  at showdown " + fmtBB(sd[i]) + "  \xC2\xB7  without showdown " + fmtBB(nosd[i]) +
+                 (i > 0 ? "  \xC2\xB7  this hand " + fmtBB(hands[i - 1]->netBB) : ""));
   }
 }
 
-void barRow(Gui& g, float x, float y, float w, const std::string& label, double v, int n) {
+// Stacked bar of decision grades: good/best, inaccuracy, mistake, blunder (status colours + legend).
+void gradeRow(Gui& g, float x, float y, float w, const std::string& label, const std::array<int, 5>& c) {
+  int n = 0;
+  double sc = 0;
+  for (int k = 0; k < 5; ++k) {
+    n += c[k];
+    sc += c[k] * gradeScore(static_cast<GradeLevel>(k));
+  }
   g.textRight(label, x + 64, y + 2, 13, theme::text2);
   Rectangle bg{x + 74, y + 2, w - 74 - 56, 16};
   DrawRectangleRounded(bg, 0.5f, 6, theme::surface2);
-  if (v >= 0) DrawRectangleRounded({bg.x, bg.y, std::max(4.f, static_cast<float>(bg.width * v)), bg.height}, 0.5f, 6, theme::series);
-  g.text(v >= 0 ? pct(v) : "-", bg.x + bg.width + 8, y + 2, 13, theme::text, true);
-  if (g.hover({x, y, w, 20})) g.setTooltip(label + ": " + (v >= 0 ? pct(v) + " decision score over " + std::to_string(n) + " decisions" : "no decisions yet"));
+  if (n) {
+    int parts[4] = {c[0] + c[1], c[2], c[3], c[4]};
+    Color cols[4] = {theme::good, theme::warning, theme::serious, theme::critical};
+    float px = bg.x;
+    for (int k = 0; k < 4; ++k) {
+      if (!parts[k]) continue;
+      float pw = bg.width * parts[k] / n;
+      DrawRectangleRec({px, bg.y, std::max(1.f, pw - 2), bg.height}, cols[k]);  // 2px surface gap
+      px += pw;
+    }
+  }
+  g.text(n ? pct(sc / n) : "-", bg.x + bg.width + 8, y + 2, 13, theme::text, true);
+  if (g.hover({x, y, w, 20}))
+    g.setTooltip(label + ": " + std::to_string(c[0] + c[1]) + " good, " + std::to_string(c[2]) + " inaccuracies, " + std::to_string(c[3]) + " mistakes, " + std::to_string(c[4]) +
+                 " blunders (score " + (n ? pct(sc / n) : std::string("-")) + ")");
 }
+
+Color diverging(double t) {  // t in [-1, 1]: red (lost) .. neutral grey .. blue (won)
+  const Color neutral{56, 56, 53, 255}, pos{57, 135, 229, 255}, neg{230, 103, 103, 255};
+  Color pole = t >= 0 ? pos : neg;
+  float k = static_cast<float>(std::min(1.0, std::fabs(t)));
+  return Color{static_cast<unsigned char>(neutral.r + (pole.r - neutral.r) * k), static_cast<unsigned char>(neutral.g + (pole.g - neutral.g) * k),
+               static_cast<unsigned char>(neutral.b + (pole.b - neutral.b) * k), 255};
+}
+
 }  // namespace
 
 void StatsScreen::draw(App& app, Rectangle area) {
@@ -146,53 +204,86 @@ void StatsScreen::draw(App& app, Rectangle area) {
   const float W = area.width - 14;
   const float gap = 14;
 
-  // tiles
+  // ---- period filter ----
+  static const char* periods[] = {"All time", "Last 100 hands", "This session"};
+  float px = area.x;
+  for (int i = 0; i < 3; ++i) {
+    float w = g.measure(periods[i], 13, true).x + 24;
+    if (g.button({px, y, w, 30}, periods[i], period_ == i ? Btn::ChipOn : Btn::Chip, true, 13)) period_ = i;
+    px += w + 8;
+  }
+  g.text("Results, positions and starting hands use this period; decision quality and HUD stats are all-time.", px + 10, y + 8, 12.5f, theme::muted);
+  y += 44;
+  std::vector<const HandSummary*> hands;
+  for (auto& h : pr.hands)
+    if (period_ != 2 || h.t >= sessionStartMs_) hands.push_back(&h);
+  if (period_ == 1 && hands.size() > 100) hands.erase(hands.begin(), hands.end() - 100);
+  double net = 0, sdNet = 0, nosdNet = 0;
+  int won = 0;
+  for (auto* h : hands) {
+    net += h->netBB;
+    (h->showdown ? sdNet : nosdNet) += h->netBB;
+    won += h->netBB > 0;
+  }
+  double bb100 = hands.empty() ? 0 : net / hands.size() * 100;
+
+  // ---- tiles ----
   struct Tile {
     std::string label, value;
     Color c;
+    std::string tip;
   };
   int errs = T.grades[2] + T.grades[3] + T.grades[4];
   char evl[32], wr[48];
   std::snprintf(evl, sizeof evl, "%.1f bb", pr.evLossBB);
-  std::snprintf(wr, sizeof wr, "%s%.1f bb/100", T.bb100 >= 0 ? "+" : "\xE2\x88\x92", std::fabs(T.bb100));
-  std::vector<Tile> tiles = {{"Hands played", fmtInt(T.hands), theme::text},
-                             {"Net won", fmtBB(T.netBB), T.netBB > 0 ? theme::gain : T.netBB < 0 ? theme::loss : theme::text},
-                             {"Win rate", wr, T.bb100 > 0 ? theme::gain : T.bb100 < 0 ? theme::loss : theme::text},
-                             {"Decision score", T.accuracy >= 0 ? pct(T.accuracy) : "-", theme::text},
-                             {"Errors", fmtInt(errs) + " of " + fmtInt(T.decisions), theme::text},
-                             {"EV lost to errors", evl, theme::text}};
-  float tw = (W - gap * 5) / 6;
+  std::snprintf(wr, sizeof wr, "%s%.1f bb/100", bb100 >= 0 ? "+" : "\xE2\x88\x92", std::fabs(bb100));
+  auto signC = [](double v) { return v > 0 ? theme::gain : v < 0 ? theme::loss : theme::text; };
+  std::vector<Tile> tiles = {
+      {"Hands played", fmtInt(static_cast<long>(hands.size())), theme::text, std::to_string(won) + " hands won"},
+      {"Net won", fmtBB(net), signC(net), "Total winnings in big blinds for this period"},
+      {"Win rate", wr, signC(bb100), "Big blinds won per 100 hands. Good players win 5-10 bb/100 against tough opposition."},
+      {"At showdown", fmtBB(sdNet), signC(sdNet), "Won or lost in hands that went to showdown"},
+      {"Without showdown", fmtBB(nosdNet), signC(nosdNet), "Won or lost in hands decided by a fold. Aggressive winners are positive here."},
+      {"Decision score", T.accuracy >= 0 ? pct(T.accuracy) : "-", theme::text, fmtInt(T.decisions) + " graded decisions, " + fmtInt(errs) + " errors (all time)"},
+      {"EV lost to errors", evl, theme::text, "Estimated big blinds given away by inaccuracies, mistakes and blunders (all time)"}};
+  float tw = (W - gap * (tiles.size() - 1)) / tiles.size();
   for (size_t i = 0; i < tiles.size(); ++i) {
     Rectangle r{area.x + i * (tw + gap), y, tw, 70};
     g.panel(r);
-    g.text(tiles[i].label, r.x + 12, r.y + 12, 12.5f, theme::muted);
-    g.text(g.ellipsize(tiles[i].value, tw - 20, 20, true), r.x + 12, r.y + 34, 20, tiles[i].c, true);
+    g.text(g.ellipsize(tiles[i].label, tw - 20, 12.5f), r.x + 12, r.y + 12, 12.5f, theme::muted);
+    g.text(g.ellipsize(tiles[i].value, tw - 20, 19, true), r.x + 12, r.y + 34, 19, tiles[i].c, true);
+    if (g.hover(r)) g.setTooltip(tiles[i].tip);
   }
   y += 84;
 
-  // results chart
-  Rectangle cr{area.x, y, W, 280};
+  // ---- results chart ----
+  Rectangle cr{area.x, y, W, 300};
   g.panel(cr, "Results", "Cumulative winnings in big blinds, hand by hand");
-  profitChart(g, {cr.x + 10, cr.y + 44, cr.width - 20, cr.height - 52}, pr.hands);
+  resultsChart(g, {cr.x + 10, cr.y + 46, cr.width - 20, cr.height - 54}, hands);
   y += cr.height + gap;
 
   float colW = (W - gap) / 2;
-  // decision quality
+  // ---- decision quality ----
   {
     Rectangle r{area.x, y, colW, 300};
-    g.panel(r, "Decision quality by street");
+    g.panel(r, "Decision quality by street", "All time");
     float yy = r.y + 46;
+    // legend
+    struct Lg {
+      Color c;
+      const char* t;
+    } lg[] = {{theme::good, "Good / best"}, {theme::warning, "Inaccuracy"}, {theme::serious, "Mistake"}, {theme::critical, "Blunder"}};
+    float lx = r.x + 84;
+    for (auto& l : lg) {
+      DrawRectangleRounded({lx, yy + 3, 10, 10}, 0.3f, 4, l.c);
+      g.text(l.t, lx + 14, yy, 12, theme::text2);
+      lx += g.measure(l.t, 12).x + 30;
+    }
+    yy += 26;
     static const char* streets[] = {"preflop", "flop", "turn", "river"};
-    for (const char* s : streets) {
-      auto it = pr.decisions.find(s);
-      std::array<int, 5> c = it == pr.decisions.end() ? std::array<int, 5>{} : it->second;
-      int n = 0;
-      double sc = 0;
-      for (int k = 0; k < 5; ++k) {
-        n += c[k];
-        sc += c[k] * gradeScore(static_cast<GradeLevel>(k));
-      }
-      barRow(g, r.x + 10, yy, r.width - 20, s, n ? sc / n : -1, n);
+    for (const char* sname : streets) {
+      auto it = pr.decisions.find(sname);
+      gradeRow(g, r.x + 10, yy, r.width - 20, sname, it == pr.decisions.end() ? std::array<int, 5>{} : it->second);
       yy += 28;
     }
     yy += 10;
@@ -202,10 +293,10 @@ void StatsScreen::draw(App& app, Rectangle area) {
     static const char* gl[] = {"Best", "Good", "Inaccuracy", "Mistake", "Blunder"};
     for (int k = 0; k < 5; ++k) g.text(gl[k], r.x + 14 + cx[k + 1], yy, 12, theme::muted, true);
     yy += 20;
-    for (const char* s : streets) {
-      auto it = pr.decisions.find(s);
+    for (const char* sname : streets) {
+      auto it = pr.decisions.find(sname);
       std::array<int, 5> c = it == pr.decisions.end() ? std::array<int, 5>{} : it->second;
-      g.text(s, r.x + 14, yy, 13, theme::text2);
+      g.text(sname, r.x + 14, yy, 13, theme::text2);
       for (int k = 0; k < 5; ++k) g.text(std::to_string(c[k]), r.x + 14 + cx[k + 1], yy, 13, theme::text);
       yy += 20;
     }
@@ -243,6 +334,73 @@ void StatsScreen::draw(App& app, Rectangle area) {
     g.popClip();
   }
   y += 300 + gap;
+
+  // ---- starting hands heat map + biggest pots ----
+  {
+    float gridW = std::min(520.f, W * 0.55f);
+    float h = 52 + gridW + 40;
+    Rectangle r{area.x, y, W, h};
+    g.panel(r, "Your starting hands", "Net big blinds won with each starting hand (blue won, red lost)");
+    std::array<double, 169> netBy{};
+    std::array<int, 169> cnt{};
+    double maxAbs = 1;
+    for (auto* hs : hands) {
+      if (hs->c1 < 0) continue;
+      int cls = classOf(hs->c1, hs->c2);
+      netBy[cls] += hs->netBB;
+      cnt[cls]++;
+    }
+    for (int i = 0; i < 169; ++i) maxAbs = std::max(maxAbs, std::fabs(netBy[i]));
+    float cell = gridW / 13;
+    float gx = r.x + 16, gy = r.y + 48;
+    for (auto& c : R().classes) {
+      Rectangle cr2{gx + c.col * cell, gy + c.row * cell, cell - 2, cell - 2};
+      Color fill = cnt[c.index] ? diverging(netBy[c.index] / maxAbs) : theme::surface2;
+      DrawRectangleRounded(cr2, 0.15f, 4, fill);
+      g.textCentered(c.name, cr2, std::clamp(cell * 0.27f, 8.f, 12.f), cnt[c.index] ? WHITE : theme::muted, cnt[c.index] > 0);
+      if (g.hover(cr2))
+        g.setTooltip(c.name + ": " + (cnt[c.index] ? std::to_string(cnt[c.index]) + " hands, " + fmtBB(netBy[c.index]) : std::string("not dealt yet")));
+    }
+    // diverging legend
+    float ly = gy + gridW + 8;
+    for (int i = 0; i < 40; ++i) DrawRectangleRec({gx + 60 + i * 5.f, ly + 4, 5, 10}, diverging(-1 + i / 19.5));
+    g.text("lost", gx + 22, ly + 1, 12, theme::text2);
+    g.text("won", gx + 268, ly + 1, 12, theme::text2);
+    g.text("grey: not played yet", gx + 310, ly + 1, 12, theme::muted);
+
+    // biggest pots
+    float bx = gx + gridW + 30, bw = r.x + r.width - bx - 16;
+    std::vector<const HandSummary*> sorted = hands;
+    std::sort(sorted.begin(), sorted.end(), [](auto* a, auto* b) { return a->netBB > b->netBB; });
+    auto listPots = [&](float yy, const char* title, bool wins) {
+      g.text(title, bx, yy, 14, theme::text, true);
+      yy += 26;
+      int shown = 0;
+      for (int k = 0; k < static_cast<int>(sorted.size()) && shown < 5; ++k) {
+        const HandSummary* hs = wins ? sorted[k] : sorted[sorted.size() - 1 - k];
+        if (wins ? hs->netBB <= 0 : hs->netBB >= 0) break;
+        Rectangle row{bx, yy, bw, 38};
+        DrawRectangleRounded(row, 0.2f, 6, theme::surface2);
+        if (hs->c1 >= 0) {
+          g.card(hs->c1, {row.x + 8, row.y + 4, 21, 30});
+          g.card(hs->c2, {row.x + 32, row.y + 4, 21, 30});
+        }
+        g.text(hs->position, row.x + 64, row.y + 11, 13, theme::text2, true);
+        g.text(hs->showdown ? "showdown" : "no showdown", row.x + 110, row.y + 11, 12.5f, theme::muted);
+        g.textRight(fmtBB(hs->netBB), row.x + row.width - 12, row.y + 10, 14.5f, wins ? theme::gain : theme::loss, true);
+        yy += 44;
+        ++shown;
+      }
+      if (!shown) {
+        g.text(wins ? "No winning hands yet." : "No losing hands yet.", bx, yy, 13, theme::muted);
+        yy += 24;
+      }
+      return yy;
+    };
+    float yy = listPots(r.y + 48, "Biggest wins", true);
+    listPots(yy + 12, "Biggest losses", false);
+    y += h + gap;
+  }
 
   // HUD stats + positions
   {
@@ -285,10 +443,17 @@ void StatsScreen::draw(App& app, Rectangle area) {
     g.text("bb/100", p5, yy, 12, theme::muted, true);
     yy += 22;
     static const char* order[] = {"UTG", "UTG+1", "UTG+2", "LJ", "HJ", "CO", "BTN", "SB", "BB"};
+    std::map<std::string, PosStat> byPos;
+    for (auto* hs : hands) {
+      PosStat& ps = byPos[hs->position];
+      ps.hands++;
+      ps.netBB += hs->netBB;
+      ps.vpip += hs->vpip;
+    }
     bool any = false;
     for (const char* p : order) {
-      auto it = pr.byPosition.find(p);
-      if (it == pr.byPosition.end()) continue;
+      auto it = byPos.find(p);
+      if (it == byPos.end()) continue;
       any = true;
       const PosStat& s = it->second;
       g.text(p, p1, yy, 13, theme::text, true);

@@ -8,6 +8,9 @@
 #include "core/handinfo.hpp"
 #include "ui/app.hpp"
 
+#include <map>
+#include <string>
+
 namespace hl::ui {
 
 namespace {
@@ -158,14 +161,55 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
 
   float cx = r.x + r.width / 2, cy = r.y + r.height / 2 + 4;
   float rx = r.width * 0.40f, ry = r.height * 0.34f;
-  // felt
-  DrawEllipse(static_cast<int>(cx), static_cast<int>(cy + 10), rx + 22, ry + 22, Color{0, 0, 0, 90});
-  DrawEllipse(static_cast<int>(cx), static_cast<int>(cy), rx + 16, ry + 16, theme::rail);
-  DrawEllipse(static_cast<int>(cx), static_cast<int>(cy), rx, ry, theme::feltDark);
-  for (int i = 0; i < 24; ++i) {  // soft radial highlight
-    float k = 1 - i * 0.035f;
-    DrawEllipse(static_cast<int>(cx), static_cast<int>(cy - ry * 0.1f * i / 24), rx * k, ry * k, withAlpha(Color{31, 122, 79, 255}, 0.07f));
+  // felt: shadow, wooden rail with gold trim, textured cloth, soft light, watermark
+  const int icx = static_cast<int>(cx), icy = static_cast<int>(cy);
+  DrawEllipse(icx, icy + 14, rx + 30, ry + 30, Color{0, 0, 0, 110});
+  DrawEllipse(icx, icy, rx + 24, ry + 24, Color{38, 25, 16, 255});
+  DrawEllipse(icx, icy - 2, rx + 21, ry + 21, Color{74, 50, 32, 255});
+  DrawEllipse(icx, icy - 4, rx + 17, ry + 17, Color{95, 66, 42, 255});
+  DrawEllipse(icx, icy, rx + 13, ry + 13, Color{58, 39, 25, 255});
+  DrawEllipse(icx, icy, rx + 4, ry + 4, Color{176, 138, 64, 255});  // gold trim
+  DrawEllipse(icx, icy, rx + 2, ry + 2, Color{120, 92, 44, 255});
+  DrawEllipse(icx, icy, rx, ry, theme::feltDark);
+  for (int i = 0; i < 28; ++i) {  // soft radial light
+    float k = 1 - i * 0.03f;
+    DrawEllipse(icx, static_cast<int>(cy - ry * 0.12f * i / 28), rx * k, ry * k, withAlpha(Color{34, 128, 84, 255}, 0.065f));
   }
+  {  // cloth texture: fixed pseudo-random specks inside the ellipse
+    static std::vector<Vector3> specks = [] {
+      std::vector<Vector3> v;
+      Rng r(2024);
+      while (v.size() < 2600) {
+        float x = static_cast<float>(r.next() * 2 - 1), y = static_cast<float>(r.next() * 2 - 1);
+        if (x * x + y * y < 0.97f) v.push_back({x, y, static_cast<float>(r.next())});
+      }
+      return v;
+    }();
+    for (auto& p : specks)
+      DrawRectangleRec({cx + p.x * rx, cy + p.y * ry, 1.5f, 1.5f}, p.z < 0.5f ? Color{255, 255, 255, 9} : Color{0, 0, 0, 22});
+  }
+  {
+    const char* wm = "\xE2\x99\xA0  HOLD'EM LAB";
+    Vector2 m = g.measure(wm, 30, true);
+    g.text(wm, cx - m.x / 2, cy + ry * 0.42f, 30, Color{255, 255, 255, 16}, true);
+  }
+
+  // card deal animation: remember when each card first appeared
+  if (!has || h.id != animHand_) {
+    animHand_ = has ? h.id : -1;
+    cardSeen_.clear();
+  }
+  const double now = GetTime();
+  int newThisFrame = 0;
+  auto dealt = [&](const std::string& key, Rectangle target) -> Rectangle {
+    auto it = cardSeen_.find(key);
+    if (it == cardSeen_.end()) it = cardSeen_.emplace(key, now + 0.06 * newThisFrame++).first;
+    double t = std::clamp((now - it->second) / 0.32, 0.0, 1.0);
+    if (t >= 1) return target;
+    float e = static_cast<float>(1 - std::pow(1 - t, 3));
+    Rectangle from{cx - target.width * 0.3f, cy - ry * 0.95f, target.width * 0.6f, target.height * 0.6f};
+    return {from.x + (target.x - from.x) * e, from.y + (target.y - from.y) * e, from.width + (target.width - from.width) * e, from.height + (target.height - from.height) * e};
+  };
 
   std::set<Card> bestCards;
   std::map<int, const ShowdownHand*> sd;
@@ -209,8 +253,8 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
       if (!hp->folded || isHero || set.showAllCards) {
         float total = cardW * 2 + 4;
         for (int k = 0; k < 2; ++k) {
-          Rectangle cr{pos.x - total / 2 + k * (cardW + 4), box.y - cardH + 12, cardW, cardH};
-          g.card(hp->hole[k], cr, !reveal, finishedShown && bestCards.count(hp->hole[k]), hp->folded);
+          Rectangle cr = dealt("s" + std::to_string(i) + "k" + std::to_string(k), {pos.x - total / 2 + k * (cardW + 4), box.y - cardH + 12, cardW, cardH});
+          g.card(hp->hole[k], cr, !reveal || cr.width < cardW * 0.99f, finishedShown && bestCards.count(hp->hole[k]), hp->folded);
         }
       }
     }
@@ -229,6 +273,10 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
     if (finishedShown) {
       auto it = h.results.winnings.find(i);
       winner = it != h.results.winnings.end() && it->second > 0;
+    }
+    if (winner) {  // pulsing glow around the winner
+      float a = 0.25f + 0.2f * std::sin(static_cast<float>(GetTime()) * 5);
+      for (int k = 3; k >= 1; --k) DrawRectangleRounded({box.x - k * 3.f, box.y - k * 3.f, box.width + k * 6.f, box.height + k * 6.f}, 0.35f, 8, withAlpha(theme::gain, a / k));
     }
     Color fill = isHero ? Color{28, 36, 32, 245} : Color{15, 20, 18, 235};
     DrawRectangleRounded(box, 0.3f, 8, folded ? withAlpha(fill, 0.6f) : fill);
@@ -307,10 +355,10 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
       Vector2 bp{cx + rx * 0.70f * ca, cy + ry * 0.62f * sa};
       std::string bt = fmtInt(bet);
       Vector2 m = g.measure(bt, 13, true);
-      Rectangle br{bp.x - (m.x + 30) / 2, bp.y - 11, m.x + 30, 22};
-      DrawRectangleRounded(br, 1, 8, Color{0, 0, 0, 140});
-      g.chip({br.x + 11, bp.y}, 7);
-      g.text(bt, br.x + 22, bp.y - m.y / 2, 13, WHITE, true);
+      g.chipStack({bp.x - (m.x + 26) / 2 + 9, bp.y + 4}, bet, h.bb, 9);
+      Rectangle br{bp.x - (m.x + 26) / 2 + 20, bp.y - 10, m.x + 14, 20};
+      DrawRectangleRounded(br, 1, 8, Color{0, 0, 0, 150});
+      g.textCentered(bt, br, 13, WHITE, true);
     }
     if (has && h.buttonSeat == i) {
       Vector2 dp{cx + rx * 0.84f * std::cos(a - 0.3f), cy + ry * 0.80f * std::sin(a - 0.3f)};
@@ -326,15 +374,19 @@ void PlayScreen::drawTable(App& app, Rectangle r) {
   int count = has ? (runningOut ? st.revealCount : static_cast<int>(h.board.size())) : 0;
   for (int k = 0; k < 5; ++k) {
     Rectangle cr{bx + k * (bw + 8), by, bw, bh};
-    if (k < count) g.card(h.board[k], cr, false, finishedShown && bestCards.count(h.board[k]));
+    if (k < count) {
+      g.cardSlot(cr);
+      g.card(h.board[k], dealt("b" + std::to_string(k), cr), false, finishedShown && bestCards.count(h.board[k]));
+    }
     else g.cardSlot(cr);
   }
   int potShown = has && !h.finished ? t.potTotal() : (runningOut ? potTotal : 0);
   if (potShown > 0) {
     std::string pt = "Pot " + fmtInt(potShown);
     Vector2 m = g.measure(pt, 15, true);
-    Rectangle pr{cx - m.x / 2 - 14, by + bh + 10, m.x + 28, 26};
-    DrawRectangleRounded(pr, 1, 8, Color{0, 0, 0, 80});
+    Rectangle pr{cx - m.x / 2 - 14 + 16, by + bh + 10, m.x + 28, 26};
+    g.chipStack({pr.x - 16, pr.y + 18}, potShown, h.bb, 11);
+    DrawRectangleRounded(pr, 1, 8, Color{0, 0, 0, 110});
     g.textCentered(pt, pr, 15, Color{230, 242, 234, 255}, true);
   }
   std::string msg;

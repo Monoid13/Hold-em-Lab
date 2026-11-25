@@ -407,15 +407,30 @@ void Gui::card(Card c, Rectangle r, bool faceDown, bool highlight, bool dim) con
   }
   Color face = theme::cardFace;
   DrawRectangleRounded(r, round, 6, face);
+  DrawRectangleRoundedLinesEx(r, round, 6, 1, Color{205, 202, 192, 255});
   if (highlight) DrawRectangleRoundedLinesEx({r.x - 2, r.y - 2, r.width + 4, r.height + 4}, round, 6, 3, theme::accent);
   int rank = c >> 2, suit = c & 3;
   Color col = suitColor(suit);
   std::string rk = rankLabel(rank);
-  float rs = r.width * 0.42f;
-  text(rk, r.x + r.width * 0.09f, r.y + r.height * 0.04f, rs, col, true);
-  float ss = r.width * 0.56f;
-  Vector2 m = measure(suitSymbol(suit), ss);
-  text(suitSymbol(suit), r.x + r.width - m.x - r.width * 0.08f, r.y + r.height - m.y - r.height * 0.02f, ss, col);
+  if (r.width >= 40) {
+    // classic layout: rank + small suit in the corner, large suit in the middle
+    float rs = r.width * 0.36f;
+    float rx = r.x + r.width * 0.08f, ry = r.y + r.height * 0.03f;
+    text(rk, rx, ry, rs, col, true);
+    float cs = r.width * 0.28f;
+    float rw = measure(rk, rs, true).x;
+    Vector2 cm = measure(suitSymbol(suit), cs);
+    text(suitSymbol(suit), rx + (rw - cm.x) / 2, ry + rs * 0.95f, cs, col);
+    float bs = r.width * 0.62f;
+    Vector2 bm = measure(suitSymbol(suit), bs);
+    text(suitSymbol(suit), r.x + r.width * 0.58f - bm.x / 2, r.y + r.height * 0.6f - bm.y / 2, bs, col);
+  } else {
+    float rs = r.width * 0.42f;
+    text(rk, r.x + r.width * 0.09f, r.y + r.height * 0.04f, rs, col, true);
+    float ss = r.width * 0.56f;
+    Vector2 m = measure(suitSymbol(suit), ss);
+    text(suitSymbol(suit), r.x + r.width - m.x - r.width * 0.08f, r.y + r.height - m.y - r.height * 0.02f, ss, col);
+  }
   if (dim) DrawRectangleRounded(r, round, 6, Color{14, 19, 17, 130});
 }
 
@@ -428,6 +443,24 @@ void Gui::chip(Vector2 c, float rad) const {
   DrawCircleV(c, rad, Color{200, 57, 43, 255});
   DrawRing(c, rad * 0.62f, rad * 0.78f, 0, 360, 24, WHITE);
   DrawCircleV(c, rad * 0.3f, WHITE);
+}
+
+void Gui::chipStack(Vector2 base, int amount, int bb, float rad) const {
+  // A few chips per stack, colour by size: red, green, blue, black, purple
+  static const Color cols[] = {{200, 57, 43, 255}, {36, 140, 76, 255}, {38, 92, 180, 255}, {40, 40, 44, 255}, {120, 64, 170, 255}};
+  double x = static_cast<double>(amount) / std::max(1, bb);
+  int n = std::clamp(1 + static_cast<int>(std::log2(std::max(1.0, x))), 1, 7);
+  for (int i = 0; i < n; ++i) {
+    Color c = cols[std::min(4, i / 2 + (x > 50 ? 2 : x > 10 ? 1 : 0))];
+    float y = base.y - i * rad * 0.42f;
+    DrawEllipse(static_cast<int>(base.x), static_cast<int>(y + 2), rad, rad * 0.5f, Color{0, 0, 0, 120});
+    DrawEllipse(static_cast<int>(base.x), static_cast<int>(y), rad, rad * 0.5f, Color{static_cast<unsigned char>(c.r * 0.7f), static_cast<unsigned char>(c.g * 0.7f), static_cast<unsigned char>(c.b * 0.7f), 255});
+    DrawEllipse(static_cast<int>(base.x), static_cast<int>(y - 1.5f), rad, rad * 0.5f, c);
+    for (int k = 0; k < 4; ++k) {  // edge stripes
+      float a = (k * 90 + 30) * DEG2RAD;
+      DrawEllipse(static_cast<int>(base.x + std::cos(a) * rad * 0.78f), static_cast<int>(y - 1.5f + std::sin(a) * rad * 0.39f), rad * 0.16f, rad * 0.09f, Color{255, 255, 255, 200});
+    }
+  }
 }
 
 static Color gradeColor(int g) {

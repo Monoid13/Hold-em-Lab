@@ -3,6 +3,7 @@
 
 #include <array>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -56,6 +57,7 @@ struct HandSummary {
   double netBB = 0;
   std::string position;
   bool vpip = false, showdown = false;
+  int c1 = -1, c2 = -1;  // hole cards (-1 for hands recorded before v1.3)
 };
 
 struct DrillStat {
@@ -83,6 +85,7 @@ class Progress {
   std::map<std::string, DrillStat> drills;
   std::map<std::string, PosStat> byPosition;
   int sessions = 0;
+  std::set<std::string> learnRead;  // finished course chapters
 
   void load();
   void save() const;
@@ -107,6 +110,8 @@ struct Snapshot {
   int pot = 0;
   std::map<int, SnapPlayer> players;
   bool result = false;
+  int actStreet = -1;  // street on which this step's action was taken (-1: not an action)
+  int added = 0;       // chips the action put in
   int potTotal() const;
 };
 

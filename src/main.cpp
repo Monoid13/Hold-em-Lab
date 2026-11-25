@@ -8,6 +8,8 @@
 //   --rankings        open the hand-rankings overlay
 //   --autoplay        the hero checks/calls automatically
 //   --wait-hero       after N frames, keep running until it's the hero's turn
+//   --learn N         open chapter N of the Learn tab
+//   --ranges-mode M   open Ranges in mode M (0 opening, 1 facing a raise, 2 ranking)
 //   --drill K         open drill K (0-4) on the Drills tab; --answer answers it
 //   --size WxH        initial window size
 
@@ -34,7 +36,7 @@ int main(int argc, char** argv) {
   std::string shot, tab;
   bool autoplay = false, waitHero = false, drillAnswer = false, welcome = false, rankings = false;
   int welcomePage = 0;
-  int drill = -1;
+  int drill = -1, learnChapter = -1, rangesMode = -1;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--frames" && i + 1 < argc) frames = std::atoi(argv[++i]);
@@ -50,6 +52,8 @@ int main(int argc, char** argv) {
     else if (a == "--wait-hero") waitHero = true;
     else if (a == "--drill" && i + 1 < argc) drill = std::atoi(argv[++i]);
     else if (a == "--answer") drillAnswer = true;
+    else if (a == "--learn" && i + 1 < argc) learnChapter = std::atoi(argv[++i]);
+    else if (a == "--ranges-mode" && i + 1 < argc) rangesMode = std::atoi(argv[++i]);
     else if (a == "--size" && i + 1 < argc) std::sscanf(argv[++i], "%dx%d", &width, &height);
   }
 
@@ -87,6 +91,14 @@ int main(int argc, char** argv) {
     if (welcome) app.settings.seenWelcome = false;
     else if (frames > 0) app.settings.seenWelcome = true;  // scripted runs skip the tour unless asked
     app.ctrl.newGame();
+    if (rangesMode >= 0) {
+      app.tab = hl::ui::Tab::Ranges;
+      app.ranges().debugSet(rangesMode, 27);  // 27 = A2s in grid order
+    }
+    if (learnChapter >= 0) {
+      app.tab = hl::ui::Tab::Learn;
+      app.learn().open(learnChapter);
+    }
     if (drill >= 0) {
       app.tab = hl::ui::Tab::Drills;
       app.drills().open(drill);

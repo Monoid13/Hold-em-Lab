@@ -122,11 +122,11 @@ needed).
 | Screen | What it does |
 | --- | --- |
 | **Play** | The table. In beginner mode it explains each stage, shows your hand and its strength in plain words, and marks the coach's suggested move. Shortcuts: `F` fold, `C` check/call, `R` bet/raise, `Up`/`Down` change the size, `H` hint, `?` hand rankings, `Space` next hand, `P` pause. The right-hand panel shows your hand, draws, outs, equity against estimated ranges, pot odds and the coach's grade for each decision. |
-| **Learn** | How to play, hand rankings with examples, a glossary of poker words and beginner tips. |
-| **Review** | Replays recent hands step by step (`Left`/`Right` keys) with every hole card shown and the coach's notes on each of your decisions. |
-| **Stats** | Profit graph, decision score by street, a leak finder, your HUD stats against typical winning ranges, results by position, drill scores, and reads on each opponent. |
+| **Learn** | A 12-chapter poker course - rules, hand rankings, a full example hand, betting rules and side pots, position, starting hands, pot odds and outs, reading the board, bet sizing and bluffing, opponent types, bankroll and tilt, tournaments - with card illustrations, progress ticks and links to drills. Plus a glossary and beginner tips. |
+| **Review** | Every recent hand with its result summary, the key moment (your costliest decision), a street-by-street timeline with board and pot, a step-by-step replay (`Left`/`Right` keys) with all hole cards, and the coach's notes on each decision. |
+| **Stats** | Filter by all time, last 100 hands or this session. Results graph split into showdown and non-showdown winnings, decision quality per street, a leak finder, a heat map of your results with all 169 starting hands, biggest wins and losses, HUD stats against typical winning ranges, results by position, drill scores and reads on each opponent. |
 | **Drills** | Preflop decisions, equity estimation, pot odds and bet math, counting outs, and reading showdowns. |
-| **Ranges** | Opening charts for every position, plus a ranking of all 169 starting hands. |
+| **Ranges** | Opening charts for every position, "facing a raise" charts (3-bet / call / fold for any seat vs any raiser), a ranking of all 169 starting hands, and per-hand details with equity vs random and tight ranges. |
 | **Settings** | Beginner mode, number of opponents (1-8), table lineup or per-seat bot styles, cash game or tournament, stakes, bot speed (Relaxed / Normal / Fast), coach mode and training aids. |
 
 Your settings, stats, hand histories and drill scores are saved automatically:

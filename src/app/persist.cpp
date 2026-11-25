@@ -156,7 +156,8 @@ void Progress::load() {
   Json j = loadJson("progress");
   *this = Progress{};
   for (auto& h : j["hands"].arr())
-    hands.push_back({h["id"].asInt(), static_cast<long long>(h["t"].asNum()), h["netBB"].asNum(), h["position"].asStr(), h["vpip"].asBool(), h["showdown"].asBool()});
+    hands.push_back({h["id"].asInt(), static_cast<long long>(h["t"].asNum()), h["netBB"].asNum(), h["position"].asStr(), h["vpip"].asBool(), h["showdown"].asBool(),
+                     h["h"].arr().size() == 2 ? h["h"].arr()[0].asInt() : -1, h["h"].arr().size() == 2 ? h["h"].arr()[1].asInt() : -1});
   for (const char* st : STREET_KEYS) {
     std::array<int, 5> c{};
     for (int g = 0; g < 5; ++g) c[g] = j["decisions"][st][GRADE_KEYS[g]].asInt();
@@ -167,6 +168,7 @@ void Progress::load() {
   for (auto& [k, v] : j["drills"].obj()) drills[k] = {v["attempts"].asInt(), v["correct"].asInt(), v["streak"].asInt(), v["bestStreak"].asInt(), static_cast<long>(v["scoreSum"].asNum())};
   for (auto& [k, v] : j["byPosition"].obj()) byPosition[k] = {v["hands"].asInt(), v["vpip"].asInt(), v["netBB"].asNum()};
   sessions = j["sessions"].asInt();
+  for (auto& v : j["learnRead"].arr()) learnRead.insert(v.asStr());
 }
 
 void Progress::save() const {
@@ -182,6 +184,12 @@ void Progress::save() const {
     o["position"] = h.position;
     o["vpip"] = h.vpip;
     o["showdown"] = h.showdown;
+    if (h.c1 >= 0) {
+      Json hc = Json::array();
+      hc.push(h.c1);
+      hc.push(h.c2);
+      o["h"] = hc;
+    }
     hs.push(o);
   }
   j["hands"] = hs;
@@ -217,14 +225,19 @@ void Progress::save() const {
   }
   j["byPosition"] = bp;
   j["sessions"] = sessions;
+  Json lr = Json::array();
+  for (auto& k : learnRead) lr.push(k);
+  j["learnRead"] = lr;
   saveJson("progress", j);
 }
 
 void Progress::reset() {
   auto keep = drills;
+  auto read = learnRead;
   int s = sessions;
   *this = Progress{};
   drills = keep;
+  learnRead = read;
   sessions = s;
   save();
 }
@@ -368,6 +381,8 @@ static Json recordToJson(const HandRecord& r) {
     o["board"] = cardsJson(s.board);
     o["pot"] = s.pot;
     o["result"] = s.result;
+    o["as"] = s.actStreet;
+    o["ad"] = s.added;
     Json pl = Json::object();
     for (auto& [seat, p] : s.players) {
       Json q = Json::array();
@@ -437,6 +452,8 @@ static HandRecord recordFromJson(const Json& j) {
     s.board = cardsFrom(o["board"]);
     s.pot = o["pot"].asInt();
     s.result = o["result"].asBool();
+    s.actStreet = o["as"].asInt(-1);
+    s.added = o["ad"].asInt();
     for (auto& [k, q] : o["players"].obj()) {
       const auto& a = q.arr();
       if (a.size() == 4) s.players[std::stoi(k)] = {a[0].asInt(), a[1].asInt(), a[2].asBool(), a[3].asBool()};
